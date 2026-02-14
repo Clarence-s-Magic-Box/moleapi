@@ -1,30 +1,61 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import HeaderBar from './HeaderBar.js';
 import { Layout } from '@douyinfe/semi-ui';
 import SiderBar from './SiderBar.js';
 import App from '../../App.js';
 import FooterBar from './Footer.js';
 import { ToastContainer } from 'react-toastify';
-import React, { useContext, useEffect } from 'react';
-import { useStyle } from '../../context/Style/index.js';
+import React, { useContext, useEffect, useState } from 'react';
+import { useIsMobile } from '../../hooks/common/useIsMobile.js';
+import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed.js';
 import { useTranslation } from 'react-i18next';
 import { API, getLogo, getSystemName, showError, setStatusData } from '../../helpers/index.js';
 import { UserContext } from '../../context/User/index.js';
 import { StatusContext } from '../../context/Status/index.js';
 import { useLocation } from 'react-router-dom';
-const { Sider, Content, Header, Footer } = Layout;
+const { Sider, Content, Header } = Layout;
 
 const PageLayout = () => {
-  const [userState, userDispatch] = useContext(UserContext);
-  const [statusState, statusDispatch] = useContext(StatusContext);
-  const { state: styleState } = useStyle();
+  const [, userDispatch] = useContext(UserContext);
+  const [, statusDispatch] = useContext(StatusContext);
+  const isMobile = useIsMobile();
+  const [collapsed, , setCollapsed] = useSidebarCollapsed();
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const { i18n } = useTranslation();
   const location = useLocation();
 
-  const shouldHideFooter = location.pathname === '/console/playground' || location.pathname.startsWith('/console/chat');
+  const shouldHideFooter = location.pathname.startsWith('/console');
 
   const shouldInnerPadding = location.pathname.includes('/console') &&
     !location.pathname.startsWith('/console/chat') &&
     location.pathname !== '/console/playground';
+
+  const isConsoleRoute = location.pathname.startsWith('/console');
+  const showSider = isConsoleRoute && (!isMobile || drawerOpen);
+
+  useEffect(() => {
+    if (isMobile && drawerOpen && collapsed) {
+      setCollapsed(false);
+    }
+  }, [isMobile, drawerOpen, collapsed, setCollapsed]);
 
   const loadUser = () => {
     let user = localStorage.getItem('user');
@@ -63,7 +94,6 @@ const PageLayout = () => {
         linkElement.href = logo;
       }
     }
-    // 从localStorage获取上次使用的语言
     const savedLang = localStorage.getItem('i18nextLng');
     if (savedLang) {
       i18n.changeLanguage(savedLang);
@@ -76,7 +106,7 @@ const PageLayout = () => {
         height: '100vh',
         display: 'flex',
         flexDirection: 'column',
-        overflow: styleState.isMobile ? 'visible' : 'hidden',
+        overflow: isMobile ? 'visible' : 'hidden',
       }}
     >
       <Header
@@ -90,18 +120,16 @@ const PageLayout = () => {
           zIndex: 100,
         }}
       >
-        <HeaderBar />
+        <HeaderBar onMobileMenuToggle={() => setDrawerOpen(prev => !prev)} drawerOpen={drawerOpen} />
       </Header>
       <Layout
         style={{
-          marginTop: '64px',
-          height: 'calc(100vh - 64px)',
-          overflow: styleState.isMobile ? 'visible' : 'auto',
+          overflow: isMobile ? 'visible' : 'auto',
           display: 'flex',
           flexDirection: 'column',
         }}
       >
-        {styleState.showSider && (
+        {showSider && (
           <Sider
             style={{
               position: 'fixed',
@@ -111,21 +139,15 @@ const PageLayout = () => {
               border: 'none',
               paddingRight: '0',
               height: 'calc(100vh - 64px)',
+              width: 'var(--sidebar-current-width)',
             }}
           >
-            <SiderBar />
+            <SiderBar onNavigate={() => { if (isMobile) setDrawerOpen(false); }} />
           </Sider>
         )}
         <Layout
           style={{
-            marginLeft: styleState.isMobile
-              ? '0'
-              : styleState.showSider
-                ? styleState.siderCollapsed
-                  ? '60px'
-                  : '180px'
-                : '0',
-            transition: 'margin-left 0.3s ease',
+            marginLeft: isMobile ? '0' : showSider ? 'var(--sidebar-current-width)' : '0',
             flex: '1 1 auto',
             display: 'flex',
             flexDirection: 'column',
@@ -134,11 +156,10 @@ const PageLayout = () => {
           <Content
             style={{
               flex: '1 0 auto',
-              overflowY: styleState.isMobile ? 'visible' : 'auto',
+              overflowY: isMobile ? 'visible' : 'hidden',
               WebkitOverflowScrolling: 'touch',
-              padding: shouldInnerPadding ? '24px' : '0',
+              padding: shouldInnerPadding ? (isMobile ? '5px' : '24px') : '0',
               position: 'relative',
-              marginTop: styleState.isMobile ? '2px' : '0',
             }}
           >
             <App />

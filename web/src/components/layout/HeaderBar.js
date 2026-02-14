@@ -1,4 +1,23 @@
-import React, { useContext, useEffect, useState } from 'react';
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+import React, { useContext, useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { UserContext } from '../../context/User/index.js';
 import { useSetTheme, useTheme } from '../../context/Theme/index.js';
@@ -22,27 +41,38 @@ import {
   IconBell,
 } from '@douyinfe/semi-icons';
 import {
+  IconIntro,
+  IconModal,
+  IconTag,
+} from '@douyinfe/semi-icons-lab';
+import {
   Avatar,
   Button,
   Dropdown,
   Tag,
   Typography,
   Skeleton,
+  Badge,
 } from '@douyinfe/semi-ui';
 import { StatusContext } from '../../context/Status/index.js';
-import { useStyle, styleActions } from '../../context/Style/index.js';
+import { useIsMobile } from '../../hooks/common/useIsMobile.js';
+import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed.js';
 
-const HeaderBar = () => {
+const HeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
   const { t, i18n } = useTranslation();
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState, statusDispatch] = useContext(StatusContext);
-  const { state: styleState, dispatch: styleDispatch } = useStyle();
+  const isMobile = useIsMobile();
+  const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const [isLoading, setIsLoading] = useState(true);
+  const [logoLoaded, setLogoLoaded] = useState(false);
   let navigate = useNavigate();
   const [currentLang, setCurrentLang] = useState(i18n.language);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const [noticeVisible, setNoticeVisible] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const loadingStartRef = useRef(Date.now());
 
   const systemName = getSystemName();
   const logo = getLogo();
@@ -53,39 +83,62 @@ const HeaderBar = () => {
   const docsLink = statusState?.status?.docs_link || '';
   const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
 
+  const isConsoleRoute = location.pathname.startsWith('/console');
+
   const theme = useTheme();
   const setTheme = useSetTheme();
+
+  const announcements = statusState?.status?.announcements || [];
+
+  const getAnnouncementKey = (a) => `${a?.publishDate || ''}-${(a?.content || '').slice(0, 30)}`;
+
+  const calculateUnreadCount = () => {
+    if (!announcements.length) return 0;
+    let readKeys = [];
+    try {
+      readKeys = JSON.parse(localStorage.getItem('notice_read_keys')) || [];
+    } catch (_) {
+      readKeys = [];
+    }
+    const readSet = new Set(readKeys);
+    return announcements.filter((a) => !readSet.has(getAnnouncementKey(a))).length;
+  };
+
+  const getUnreadKeys = () => {
+    if (!announcements.length) return [];
+    let readKeys = [];
+    try {
+      readKeys = JSON.parse(localStorage.getItem('notice_read_keys')) || [];
+    } catch (_) {
+      readKeys = [];
+    }
+    const readSet = new Set(readKeys);
+    return announcements.filter((a) => !readSet.has(getAnnouncementKey(a))).map(getAnnouncementKey);
+  };
+
+  useEffect(() => {
+    setUnreadCount(calculateUnreadCount());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [announcements]);
 
   const mainNavLinks = [
     {
       text: t('首页'),
       itemKey: 'home',
       to: '/',
+      icon: <IconIntro className="text-blue-500 transition-colors duration-300 hover:text-blue-600" />,
     },
     {
       text: t('控制台'),
       itemKey: 'console',
       to: '/console',
+      icon: <IconModal className="text-purple-500 transition-colors duration-300 hover:text-purple-600" />,
     },
     {
       text: t('定价'),
       itemKey: 'pricing',
       to: '/pricing',
-    },
-    ...(docsLink
-      ? [
-        {
-          text: t('文档'),
-          itemKey: 'docs',
-          isExternal: true,
-          externalLink: docsLink,
-        },
-      ]
-      : []),
-    {
-      text: t('关于'),
-      itemKey: 'about',
-      to: '/about',
+      icon: <IconTag className="text-green-500 transition-colors duration-300 hover:text-green-600" />,
     },
   ];
 
@@ -104,6 +157,25 @@ const HeaderBar = () => {
     setTimeout(() => {
       fireworks.stop();
     }, 3000);
+  };
+
+  const handleNoticeOpen = () => {
+    setNoticeVisible(true);
+  };
+
+  const handleNoticeClose = () => {
+    setNoticeVisible(false);
+    if (announcements.length) {
+      let readKeys = [];
+      try {
+        readKeys = JSON.parse(localStorage.getItem('notice_read_keys')) || [];
+      } catch (_) {
+        readKeys = [];
+      }
+      const mergedKeys = Array.from(new Set([...readKeys, ...announcements.map(getAnnouncementKey)]));
+      localStorage.setItem('notice_read_keys', JSON.stringify(mergedKeys));
+    }
+    setUnreadCount(0);
   };
 
   useEffect(() => {
@@ -138,11 +210,23 @@ const HeaderBar = () => {
   }, [i18n]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, []);
+    if (statusState?.status !== undefined) {
+      const elapsed = Date.now() - loadingStartRef.current;
+      const remaining = Math.max(0, 500 - elapsed);
+      const timer = setTimeout(() => {
+        setIsLoading(false);
+      }, remaining);
+      return () => clearTimeout(timer);
+    }
+  }, [statusState?.status]);
+
+  useEffect(() => {
+    setLogoLoaded(false);
+    if (!logo) return;
+    const img = new Image();
+    img.src = logo;
+    img.onload = () => setLogoLoaded(true);
+  }, [logo]);
 
   const handleLanguageChange = (lang) => {
     i18n.changeLanguage(lang);
@@ -151,7 +235,7 @@ const HeaderBar = () => {
 
   const handleNavLinkClick = (itemKey) => {
     if (itemKey === 'home') {
-      styleDispatch(styleActions.setSider(false));
+      // styleDispatch(styleActions.setSider(false)); // This line is removed
     }
     setMobileMenuOpen(false);
   };
@@ -159,24 +243,39 @@ const HeaderBar = () => {
   const renderNavLinks = (isMobileView = false, isLoading = false) => {
     if (isLoading) {
       const skeletonLinkClasses = isMobileView
-        ? 'flex items-center gap-1 p-3 w-full rounded-md'
-        : 'flex items-center gap-1 p-2 rounded-md';
+        ? 'flex items-center gap-2 p-3 w-full rounded-md'
+        : 'flex items-center gap-2 p-2 rounded-md';
       return Array(4)
         .fill(null)
         .map((_, index) => (
           <div key={index} className={skeletonLinkClasses}>
-            <Skeleton.Title style={{ width: isMobileView ? 100 : 60, height: 16 }} />
+            <Skeleton
+              loading={true}
+              active
+              placeholder={
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-gray-200 dark:bg-gray-600 rounded animate-pulse" />
+                  <Skeleton.Title
+                    active
+                    style={{ width: isMobileView ? 80 : 50, height: 16 }}
+                  />
+                </div>
+              }
+            />
           </div>
         ));
     }
 
     return mainNavLinks.map((link) => {
       const commonLinkClasses = isMobileView
-        ? 'flex items-center gap-1 p-3 w-full text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors font-semibold'
-        : 'flex items-center gap-1 p-2 text-sm text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors rounded-md font-semibold';
+        ? 'nav-link-item-mobile'
+        : 'nav-link-item';
 
       const linkContent = (
-        <span>{link.text}</span>
+        <>
+          {link.icon && <span className="nav-link-icon">{link.icon}</span>}
+          <span className="nav-link-text">{link.text}</span>
+        </>
       );
 
       if (link.isExternal) {
@@ -216,9 +315,22 @@ const HeaderBar = () => {
     if (isLoading) {
       return (
         <div className="flex items-center p-1 rounded-full bg-semi-color-fill-0 dark:bg-semi-color-fill-1">
-          <Skeleton.Avatar size="extra-small" className="shadow-sm" />
+          <Skeleton
+            loading={true}
+            active
+            placeholder={<Skeleton.Avatar active size="extra-small" className="shadow-sm" />}
+          />
           <div className="ml-1.5 mr-1">
-            <Skeleton.Title style={{ width: styleState.isMobile ? 15 : 50, height: 12 }} />
+            <Skeleton
+              loading={true}
+              active
+              placeholder={
+                <Skeleton.Title
+                  active
+                  style={{ width: isMobile ? 15 : 50, height: 12 }}
+                />
+              }
+            />
           </div>
         </div>
       );
@@ -251,7 +363,7 @@ const HeaderBar = () => {
               >
                 <div className="flex items-center gap-2">
                   <IconKey size="small" className="text-gray-500 dark:text-gray-400" />
-                  <span>{t('API令牌')}</span>
+                  <span>{t('KEY 管理')}</span>
                 </div>
               </Dropdown.Item>
               <Dropdown.Item
@@ -310,7 +422,7 @@ const HeaderBar = () => {
       const registerButtonTextSpanClass = "!text-xs !text-white !p-1.5";
 
       if (showRegisterButton) {
-        if (styleState.isMobile) {
+        if (isMobile) {
           loginButtonClasses += " !rounded-full";
         } else {
           loginButtonClasses += " !rounded-l-full !rounded-r-none";
@@ -353,35 +465,34 @@ const HeaderBar = () => {
     }
   };
 
-  // 检查当前路由是否以/console开头
-  const isConsoleRoute = location.pathname.startsWith('/console');
-
   return (
     <header className="text-semi-color-text-0 sticky top-0 z-50 transition-colors duration-300 bg-white/75 dark:bg-zinc-900/75 backdrop-blur-lg">
       <NoticeModal
         visible={noticeVisible}
-        onClose={() => setNoticeVisible(false)}
-        isMobile={styleState.isMobile}
+        onClose={handleNoticeClose}
+        isMobile={isMobile}
+        defaultTab={unreadCount > 0 ? 'system' : 'inApp'}
+        unreadKeys={getUnreadKeys()}
       />
-      <div className="w-full px-4">
+      <div className="w-full px-2">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center">
             <div className="md:hidden">
               <Button
                 icon={
                   isConsoleRoute
-                    ? (styleState.showSider ? <IconClose className="text-lg" /> : <IconMenu className="text-lg" />)
+                    ? ((isMobile ? drawerOpen : collapsed) ? <IconClose className="text-lg" /> : <IconMenu className="text-lg" />)
                     : (mobileMenuOpen ? <IconClose className="text-lg" /> : <IconMenu className="text-lg" />)
                 }
                 aria-label={
                   isConsoleRoute
-                    ? (styleState.showSider ? t('关闭侧边栏') : t('打开侧边栏'))
+                    ? ((isMobile ? drawerOpen : collapsed) ? t('关闭侧边栏') : t('打开侧边栏'))
                     : (mobileMenuOpen ? t('关闭菜单') : t('打开菜单'))
                 }
                 onClick={() => {
                   if (isConsoleRoute) {
                     // 控制侧边栏的显示/隐藏，无论是否移动设备
-                    styleDispatch(styleActions.toggleSider());
+                    isMobile ? onMobileMenuToggle() : toggleCollapsed();
                   } else {
                     // 控制HeaderBar自己的移动菜单
                     setMobileMenuOpen(!mobileMenuOpen);
@@ -393,22 +504,34 @@ const HeaderBar = () => {
               />
             </div>
             <Link to="/" onClick={() => handleNavLinkClick('home')} className="flex items-center gap-2 group ml-2">
-              {isLoading ? (
-                <Skeleton.Image className="h-7 md:h-8 !rounded-full" style={{ width: 32, height: 32 }} />
-              ) : (
-                <img src={logo} alt="logo" className="h-7 md:h-8 transition-transform duration-300 ease-in-out group-hover:scale-105 rounded-full" />
-              )}
+              <div className="relative w-8 h-8 md:w-8 md:h-8">
+                {(isLoading || !logoLoaded) && (
+                  <Skeleton.Image
+                    active
+                    className="absolute inset-0 !rounded-full"
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                )}
+                <img
+                  src={logo}
+                  alt="logo"
+                  className={`absolute inset-0 w-full h-full transition-opacity duration-200 group-hover:scale-105 rounded-full ${(!isLoading && logoLoaded) ? 'opacity-100' : 'opacity-0'}`}
+                />
+              </div>
               <div className="hidden md:flex items-center gap-2">
                 <div className="flex items-center gap-2">
-                  {isLoading ? (
-                    <Skeleton.Title style={{ width: 120, height: 24 }} />
-                  ) : (
-                    <Typography.Title heading={4} className="!text-lg !font-semibold !mb-0 
-                                                          bg-gradient-to-r from-blue-500 to-purple-500 dark:from-blue-400 dark:to-purple-400
-                                                          bg-clip-text text-transparent">
-                      {systemName}
-                    </Typography.Title>
-                  )}
+                  <Skeleton
+                    loading={isLoading}
+                    active
+                    placeholder={
+                      <Skeleton.Title
+                        active
+                        style={{ width: 120, height: 20 }}
+                      />
+                    }
+                  >
+                    <div className="sidebar-title">{systemName}</div>
+                  </Skeleton>
                   {(isSelfUseMode || isDemoSiteMode) && !isLoading && (
                     <Tag
                       color={isSelfUseMode ? 'purple' : 'blue'}
@@ -435,7 +558,7 @@ const HeaderBar = () => {
               </div>
             )}
 
-            <nav className="hidden md:flex items-center gap-1 lg:gap-2 ml-6">
+            <nav className="hidden md:flex items-center gap-0.5 ml-6">
               {renderNavLinks(false, isLoading)}
             </nav>
           </div>
@@ -462,14 +585,27 @@ const HeaderBar = () => {
               </Dropdown>
             )}
 
-            <Button
-              icon={<IconBell className="text-lg" />}
-              aria-label={t('系统公告')}
-              onClick={() => setNoticeVisible(true)}
-              theme="borderless"
-              type="tertiary"
-              className="!p-1.5 !text-current focus:!bg-semi-color-fill-1 dark:focus:!bg-gray-700 !rounded-full !bg-semi-color-fill-0 dark:!bg-semi-color-fill-1 hover:!bg-semi-color-fill-1 dark:hover:!bg-semi-color-fill-2"
-            />
+            {unreadCount > 0 ? (
+              <Badge count={unreadCount} type="danger" overflowCount={99}>
+                <Button
+                  icon={<IconBell className="text-lg" />}
+                  aria-label={t('系统公告')}
+                  onClick={handleNoticeOpen}
+                  theme="borderless"
+                  type="tertiary"
+                  className="!p-1.5 !text-current focus:!bg-semi-color-fill-1 dark:focus:!bg-gray-700 !rounded-full !bg-semi-color-fill-0 dark:!bg-semi-color-fill-1 hover:!bg-semi-color-fill-1 dark:hover:!bg-semi-color-fill-2"
+                />
+              </Badge>
+            ) : (
+              <Button
+                icon={<IconBell className="text-lg" />}
+                aria-label={t('系统公告')}
+                onClick={handleNoticeOpen}
+                theme="borderless"
+                type="tertiary"
+                className="!p-1.5 !text-current focus:!bg-semi-color-fill-1 dark:focus:!bg-gray-700 !rounded-full !bg-semi-color-fill-0 dark:!bg-semi-color-fill-1 hover:!bg-semi-color-fill-1 dark:hover:!bg-semi-color-fill-2"
+              />
+            )}
 
             <Button
               icon={theme === 'dark' ? <IconSun size="large" className="text-yellow-500" /> : <IconMoon size="large" className="text-gray-300" />}
@@ -524,7 +660,7 @@ const HeaderBar = () => {
             ${(!isConsoleRoute && mobileMenuOpen) ? 'translate-y-0 opacity-100 visible' : '-translate-y-4 opacity-0 invisible'}
           `}
         >
-          <nav className="flex flex-col gap-1">
+          <nav className="flex flex-col gap-0.5">
             {renderNavLinks(true, isLoading)}
           </nav>
         </div>

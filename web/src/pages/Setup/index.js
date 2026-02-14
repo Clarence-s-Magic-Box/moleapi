@@ -1,3 +1,22 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import React, { useEffect, useState, useRef } from 'react';
 import {
   Card,
@@ -133,7 +152,7 @@ const Setup = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="bg-gray-50 mt-[60px]">
       <Layout>
         <Layout.Content>
           <div className="flex justify-center px-4 py-8">
@@ -183,7 +202,7 @@ const Setup = () => {
                         title={
                           <div className="flex items-center">
                             <span className="font-medium">{t('数据库警告')}</span>
-                            <Tag color='orange' size='small' className="ml-2 !rounded-full">
+                            <Tag color='orange' shape='circle' className="ml-2">
                               SQLite
                             </Tag>
                           </div>
@@ -222,7 +241,7 @@ const Setup = () => {
                         title={
                           <div className="flex items-center">
                             <span className="font-medium">{t('数据库信息')}</span>
-                            <Tag color='blue' size='small' className="ml-2 !rounded-full">
+                            <Tag color='blue' shape='circle' className="ml-2">
                               MySQL
                             </Tag>
                           </div>
@@ -256,7 +275,7 @@ const Setup = () => {
                         title={
                           <div className="flex items-center">
                             <span className="font-medium">{t('数据库信息')}</span>
-                            <Tag color='green' size='small' className="ml-2 !rounded-full">
+                            <Tag color='green' shape='circle' className="ml-2">
                               PostgreSQL
                             </Tag>
                           </div>
@@ -425,7 +444,7 @@ const Setup = () => {
                               <div className="flex-1">
                                 <div className="font-medium text-gray-900 mb-1">{t('对外运营模式')}</div>
                                 <div className="text-sm text-gray-500">{t('适用于为多个用户提供服务的场景')}</div>
-                                <Tag color='blue' size='small' className="!rounded-full mt-2">
+                                <Tag color='blue' shape='circle' className="mt-2">
                                   {t('默认模式')}
                                 </Tag>
                               </div>
@@ -443,7 +462,7 @@ const Setup = () => {
                               <div className="flex-1">
                                 <div className="font-medium text-gray-900 mb-1">{t('自用模式')}</div>
                                 <div className="text-sm text-gray-500">{t('适用于个人使用的场景，不需要设置模型价格')}</div>
-                                <Tag color='green' size='small' className="!rounded-full mt-2">
+                                <Tag color='green' shape='circle' className="mt-2">
                                   {t('无需计费')}
                                 </Tag>
                               </div>
@@ -461,7 +480,7 @@ const Setup = () => {
                               <div className="flex-1">
                                 <div className="font-medium text-gray-900 mb-1">{t('演示站点模式')}</div>
                                 <div className="text-sm text-gray-500">{t('适用于展示系统功能的场景，提供基础功能演示')}</div>
-                                <Tag color='purple' size='small' className="!rounded-full mt-2">
+                                <Tag color='purple' shape='circle' className="mt-2">
                                   {t('演示体验')}
                                 </Tag>
                               </div>
@@ -522,8 +541,8 @@ const Setup = () => {
                   <p>{t('默认模式，适用于为多个用户提供服务的场景。')}</p>
                   <p>{t('此模式下，系统将计算每次调用的用量，您需要对每个模型都设置价格，如果没有设置价格，用户将无法使用该模型。')}</p>
                   <div className="mt-3">
-                    <Tag color='blue' className="!rounded-full mr-2">{t('计费模式')}</Tag>
-                    <Tag color='blue' className="!rounded-full">{t('多用户支持')}</Tag>
+                    <Tag color='blue' shape='circle' className="mr-2">{t('计费模式')}</Tag>
+                    <Tag color='blue' shape='circle'>{t('多用户支持')}</Tag>
                   </div>
                 </div>
               </div>
@@ -542,8 +561,8 @@ const Setup = () => {
                   <p>{t('适用于个人使用的场景。')}</p>
                   <p>{t('不需要设置模型价格，系统将弱化用量计算，您可专注于使用模型。')}</p>
                   <div className="mt-3">
-                    <Tag color='green' className="!rounded-full mr-2">{t('无需计费')}</Tag>
-                    <Tag color='green' className="!rounded-full">{t('个人使用')}</Tag>
+                    <Tag color='green' shape='circle' className="mr-2">{t('无需计费')}</Tag>
+                    <Tag color='green' shape='circle'>{t('个人使用')}</Tag>
                   </div>
                 </div>
               </div>
@@ -562,8 +581,8 @@ const Setup = () => {
                   <p>{t('适用于展示系统功能的场景。')}</p>
                   <p>{t('提供基础功能演示，方便用户了解系统特性。')}</p>
                   <div className="mt-3">
-                    <Tag color='purple' className="!rounded-full mr-2">{t('功能演示')}</Tag>
-                    <Tag color='purple' className="!rounded-full">{t('体验试用')}</Tag>
+                    <Tag color='purple' shape='circle' className="mr-2">{t('功能演示')}</Tag>
+                    <Tag color='purple' shape='circle'>{t('体验试用')}</Tag>
                   </div>
                 </div>
               </div>

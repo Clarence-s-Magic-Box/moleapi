@@ -1,3 +1,22 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import { API } from './api';
 
 /**
@@ -6,14 +25,13 @@ import { API } from './api';
  */
 export async function fetchTokenKeys() {
   try {
-    const response = await API.get('/api/token/?p=0&size=100');
+    const response = await API.get('/api/token/?p=1&size=10');
     const { success, data } = response.data;
-    if (success) {
-      const activeTokens = data.filter((token) => token.status === 1);
-      return activeTokens.map((token) => token.key);
-    } else {
-      throw new Error('Failed to fetch token keys');
-    }
+    if (!success) throw new Error('Failed to fetch token keys');
+
+    const tokenItems = Array.isArray(data) ? data : data.items || [];
+    const activeTokens = tokenItems.filter((token) => token.status === 1);
+    return activeTokens.map((token) => token.key);
   } catch (error) {
     console.error('Error fetching token keys:', error);
     return [];

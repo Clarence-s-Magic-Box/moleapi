@@ -1,3 +1,22 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import React, { useEffect, useState, useContext } from 'react';
 import {
   API,
@@ -6,12 +25,11 @@ import {
   showSuccess,
   renderQuota,
   renderQuotaWithAmount,
-  stringToColor,
   copy,
-  getQuotaPerUnit
+  getQuotaPerUnit,
 } from '../../helpers';
 import {
-  Layout,
+  Avatar,
   Typography,
   Card,
   Button,
@@ -21,32 +39,53 @@ import {
   InputNumber,
   Banner,
   Skeleton,
+  Divider,
 } from '@douyinfe/semi-ui';
-import {
-  IconCreditCard,
-  IconGift,
-  IconPlus,
-  IconLink,
-} from '@douyinfe/semi-icons';
 import { SiAlipay, SiWechat } from 'react-icons/si';
 import { useTranslation } from 'react-i18next';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status/index.js';
+import { useTheme } from '../../context/Theme';
+import {
+  CreditCard,
+  Gift,
+  Link as LinkIcon,
+  Copy,
+  Users,
+  User,
+  Coins,
+  Check,
+} from 'lucide-react';
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
 
 const TopUp = () => {
   const { t } = useTranslation();
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState] = useContext(StatusContext);
+  const theme = useTheme();
 
   const [redemptionCode, setRedemptionCode] = useState('');
   const [topUpCode, setTopUpCode] = useState('');
   const [amount, setAmount] = useState(0.0);
   const [minTopUp, setMinTopUp] = useState(statusState?.status?.min_topup || 1);
-  const [topUpCount, setTopUpCount] = useState(statusState?.status?.min_topup || 1);
-  const [topUpLink, setTopUpLink] = useState(statusState?.status?.top_up_link || '');
-  const [enableOnlineTopUp, setEnableOnlineTopUp] = useState(statusState?.status?.enable_online_topup || false);
+  const [topUpCount, setTopUpCount] = useState(
+    statusState?.status?.min_topup || 1,
+  );
+  const [topUpLink, setTopUpLink] = useState(
+    statusState?.status?.top_up_link || '',
+  );
+  const [enableOnlineTopUp, setEnableOnlineTopUp] = useState(
+    statusState?.status?.enable_online_topup || false,
+  );
+  const [priceRatio, setPriceRatio] = useState(statusState?.status?.price || 1);
+
+  const [stripeAmount, setStripeAmount] = useState(0.0);
+  const [stripeMinTopUp, setStripeMinTopUp] = useState(statusState?.status?.stripe_min_topup || 1);
+  const [stripeTopUpCount, setStripeTopUpCount] = useState(statusState?.status?.stripe_min_topup || 1);
+  const [enableStripeTopUp, setEnableStripeTopUp] = useState(statusState?.status?.enable_stripe_topup || false);
+  const [stripeOpen, setStripeOpen] = useState(false);
+
   const [userQuota, setUserQuota] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [open, setOpen] = useState(false);
@@ -55,11 +94,78 @@ const TopUp = () => {
   const [amountLoading, setAmountLoading] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [payMethods, setPayMethods] = useState([]);
+  
+  // 微信支付相关状态
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [payUrl, setPayUrl] = useState('');
+  const [isRunning, setIsRunning] = useState(false);
+  const [tradeNo, setTradeNo] = useState('');
+  const [countdown, setCountdown] = useState(300);
 
   // 邀请相关状态
   const [affLink, setAffLink] = useState('');
   const [openTransfer, setOpenTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState(0);
+
+  // 计算加赠额度
+  const calculateQuota = (amount) => {
+    const baseQuota = amount * 500000; // 基础额度，1美元=500000 tokens
+    let extraRatio = 0;
+
+    // 根据充值金额确定加赠比例
+    if (amount >= 280) extraRatio = 0.40;
+    else if (amount >= 140) extraRatio = 0.34;
+    else if (amount >= 70) extraRatio = 0.26;
+    else if (amount >= 35) extraRatio = 0.22;
+    else if (amount >= 15) extraRatio = 0.18;
+    else if (amount >= 7) extraRatio = 0.12;
+    else if (amount >= 3) extraRatio = 0.08;
+    else if (amount >= 1) extraRatio = 0.05;
+
+    // 应用用户组倍率
+    const userGroup = userState?.user?.group || 'default';
+    const groupRatio = topupGroupRatio[userGroup] || topupGroupRatio['default'] || 1;
+
+    const extraQuota = baseQuota * extraRatio;
+    const finalBaseQuota = baseQuota * groupRatio;
+    const finalExtraQuota = extraQuota * groupRatio;
+
+    return {
+      baseQuota: finalBaseQuota,
+      extraQuota: finalExtraQuota,
+      totalQuota: finalBaseQuota + finalExtraQuota,
+      extraRatio: extraRatio,
+      groupRatio: groupRatio
+    };
+  };
+
+  // 获取加赠比例文本
+  const getExtraRatioText = (amount) => {
+    if (amount >= 280) return t('加赠40%');
+    if (amount >= 140) return t('加赠34%');
+    if (amount >= 70) return t('加赠26%');
+    if (amount >= 35) return t('加赠22%');
+    if (amount >= 15) return t('加赠18%');
+    if (amount >= 7) return t('加赠12%');
+    if (amount >= 3) return t('加赠8%');
+    if (amount >= 1) return t('加赠5%');
+    return t('无加赠');
+  };
+
+  // 预设充值额度选项
+  const [presetAmounts, setPresetAmounts] = useState([
+    { value: 1 },
+    { value: 3 },
+    { value: 7 },
+    { value: 15 },
+    { value: 35 },
+    { value: 70 },
+    { value: 140 },
+    { value: 280 },
+  ]);
+  const [selectedPreset, setSelectedPreset] = useState(null);
+  const [topupGroupRatio, setTopupGroupRatio] = useState({});
 
   const getUsername = () => {
     if (userState.user) {
@@ -67,6 +173,11 @@ const TopUp = () => {
     } else {
       return 'null';
     }
+  };
+
+  // 检测是否为移动端
+  const isMobile = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   };
 
   const getUserRole = () => {
@@ -107,7 +218,7 @@ const TopUp = () => {
         if (userState.user) {
           const updatedUser = {
             ...userState.user,
-            quota: userState.user.quota + data
+            quota: userState.user.quota + data,
           };
           userDispatch({ type: 'login', payload: updatedUser });
         }
@@ -135,6 +246,7 @@ const TopUp = () => {
       showError(t('管理员未开启在线充值！'));
       return;
     }
+    setPayWay(payment);
     setPaymentLoading(true);
     try {
       await getAmount();
@@ -142,7 +254,6 @@ const TopUp = () => {
         showError(t('充值数量不能小于') + minTopUp);
         return;
       }
-      setPayWay(payment);
       setOpen(true);
     } catch (error) {
       showError(t('获取金额失败'));
@@ -160,17 +271,69 @@ const TopUp = () => {
       return;
     }
     setConfirmLoading(true);
-    setOpen(false);
+    
     try {
-      const res = await API.post('/api/user/pay', {
-        amount: parseInt(topUpCount),
-        top_up_code: topUpCode,
-        payment_method: payWay,
-      });
-      if (res !== undefined) {
-        const { message, data } = res.data;
-        if (message === 'success') {
-          let params = data;
+      let res;
+      
+      // 根据支付方式调用不同的API端点
+      if (payWay === 'wxpay' || payWay === 'wx') {
+        // 微信支付：根据设备类型选择API
+        if (isMobile()) {
+          res = await API.post('/api/user/pay_lantu_h5', {
+            amount: parseInt(topUpCount),
+            top_up_code: topUpCode,
+            payment_method: payWay,
+          });
+        } else {
+          res = await API.post('/api/user/pay_lantu', {
+            amount: parseInt(topUpCount),
+            top_up_code: topUpCode,
+            payment_method: payWay,
+          });
+        }
+      } else {
+        // 其他支付方式（支付宝等）
+        res = await API.post('/api/user/pay', {
+          amount: parseInt(topUpCount),
+          top_up_code: topUpCode,
+          payment_method: payWay,
+        });
+      }
+      
+      if (res && res.data.message === 'success') {
+        // 微信支付处理
+        if (payWay === 'wxpay' || payWay === 'wx') {
+          const responseData = res.data.data;
+          
+          if (isMobile()) {
+            // 移动端：直接跳转到微信支付
+            if (typeof responseData === 'string') {
+              // H5 支付返回的是字符串URL
+              window.location.href = responseData;
+            } else if (responseData.code_url) {
+              window.location.href = responseData.code_url;
+            }
+          } else {
+            // 桌面端：显示二维码弹窗
+            if (responseData.QRcode_url) {
+              setPayUrl(responseData.QRcode_url);
+              setShowPayModal(true);
+            }
+          }
+          
+          // 设置交易号并开始轮询支付状态
+          if (responseData.trade_no) {
+            setTradeNo(responseData.trade_no);
+            setIsRunning(true);
+          } else if (res.data.trade_no) {
+            // H5支付的trade_no可能在外层
+            setTradeNo(res.data.trade_no);
+            setIsRunning(true);
+          }
+        } 
+        // 传统支付方式处理
+        else {
+          let params = res.data.data;
           let url = res.data.url;
           let form = document.createElement('form');
           form.action = url;
@@ -191,6 +354,58 @@ const TopUp = () => {
           document.body.appendChild(form);
           form.submit();
           document.body.removeChild(form);
+        }
+      } else {
+        showError(res.data.data || t('支付请求失败'));
+      }
+    } catch (err) {
+      console.log(err);
+      showError(t('支付请求失败'));
+    } finally {
+      setOpen(false);
+      setConfirmLoading(false);
+    }
+  };
+
+  const stripePreTopUp = async () => {
+    if (!enableStripeTopUp) {
+      showError(t('管理员未开启在线充值！'));
+      return;
+    }
+    setPayWay('stripe');
+    setPaymentLoading(true);
+    try {
+      await getStripeAmount();
+      if (stripeTopUpCount < stripeMinTopUp) {
+        showError(t('充值数量不能小于') + stripeMinTopUp);
+        return;
+      }
+      setStripeOpen(true);
+    } catch (error) {
+      showError(t('获取金额失败'));
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const onlineStripeTopUp = async () => {
+    if (stripeAmount === 0) {
+      await getStripeAmount();
+    }
+    if (stripeTopUpCount < stripeMinTopUp) {
+      showError(t('充值数量不能小于') + stripeMinTopUp);
+      return;
+    }
+    setConfirmLoading(true);
+    try {
+      const res = await API.post('/api/user/stripe/pay', {
+        amount: parseInt(stripeTopUpCount),
+        payment_method: 'stripe',
+      });
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success') {
+          processStripeCallback(data);
         } else {
           showError(data);
         }
@@ -201,8 +416,13 @@ const TopUp = () => {
       console.log(err);
       showError(t('支付请求失败'));
     } finally {
+      setStripeOpen(false);
       setConfirmLoading(false);
     }
+  }
+
+  const processStripeCallback = (data) => {
+    window.open(data.pay_link, '_blank');
   };
 
   const getUserQuota = async () => {
@@ -230,6 +450,27 @@ const TopUp = () => {
     }
   };
 
+  // 获取充值分组倍率配置
+  const getTopupGroupRatio = async () => {
+    try {
+      const res = await API.get('/api/option/');
+      const { success, data } = res.data;
+      if (success) {
+        const topupGroupRatioItem = data.find(item => item.key === 'TopupGroupRatio');
+        if (topupGroupRatioItem) {
+          try {
+            const ratio = JSON.parse(topupGroupRatioItem.value);
+            setTopupGroupRatio(ratio);
+          } catch (error) {
+            console.error('解析TopupGroupRatio出错:', error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('获取TopupGroupRatio失败:', error);
+    }
+  };
+
   // 划转邀请额度
   const transfer = async () => {
     if (transferAmount < getQuotaPerUnit()) {
@@ -250,9 +491,8 @@ const TopUp = () => {
   };
 
   // 复制邀请链接
-  const handleAffLinkClick = async (e) => {
-    e.target.select();
-    await copy(e.target.value);
+  const handleAffLinkClick = async () => {
+    await copy(affLink);
     showSuccess(t('邀请链接已复制到剪切板'));
   };
 
@@ -264,20 +504,160 @@ const TopUp = () => {
       getUserQuota().then();
     }
     getAffLink().then();
+    getTopupGroupRatio().then();
     setTransferAmount(getQuotaPerUnit());
+
+    let payMethods = localStorage.getItem('pay_methods');
+    try {
+      payMethods = JSON.parse(payMethods);
+      if (payMethods && payMethods.length > 0) {
+        // 检查name和type是否为空
+        payMethods = payMethods.filter((method) => {
+          return method.name && method.type;
+        });
+        // 如果没有color，则设置默认颜色
+        payMethods = payMethods.map((method) => {
+          if (!method.color) {
+            if (method.type === 'zfb') {
+              method.color = 'rgba(var(--semi-blue-5), 1)';
+            } else if (method.type === 'wx') {
+              method.color = 'rgba(var(--semi-green-5), 1)';
+            } else {
+              method.color = 'rgba(var(--semi-primary-5), 1)';
+            }
+          }
+          return method;
+        });
+        setPayMethods(payMethods);
+      }
+    } catch (e) {
+      console.log(e);
+      showError(t('支付方式配置错误, 请联系管理员'));
+    }
   }, []);
 
   useEffect(() => {
     if (statusState?.status) {
-      setMinTopUp(statusState.status.min_topup || 1);
-      setTopUpCount(statusState.status.min_topup || 1);
+      const minTopUpValue = statusState.status.min_topup || 1;
+      const priceRatioValue = statusState.status.price || 1;
+      
+      setMinTopUp(minTopUpValue);
+      setTopUpCount(minTopUpValue);
       setTopUpLink(statusState.status.top_up_link || '');
       setEnableOnlineTopUp(statusState.status.enable_online_topup || false);
+      setPriceRatio(priceRatioValue);
+
+      setStripeMinTopUp(statusState.status.stripe_min_topup || 1);
+      setStripeTopUpCount(statusState.status.stripe_min_topup || 1);
+      setEnableStripeTopUp(statusState.status.enable_stripe_topup || false);
+
+      // 设置默认选中的预设金额
+      const matchingPreset = presetAmounts.find(preset => preset.value === minTopUpValue);
+      if (matchingPreset) {
+        setSelectedPreset(matchingPreset.value);
+        // 初始化时计算默认金额
+        getAmount(minTopUpValue);
+        getStripeAmount(minTopUpValue);
+      } else {
+        // 如果最小充值值不在预设列表中，选择第一个预设值
+        const defaultPreset = presetAmounts[0];
+        if (defaultPreset) {
+          setTopUpCount(defaultPreset.value);
+          setStripeTopUpCount(defaultPreset.value);
+          setSelectedPreset(defaultPreset.value);
+          getAmount(defaultPreset.value);
+          getStripeAmount(defaultPreset.value);
+        }
+      }
     }
-  }, [statusState?.status]);
+  }, [statusState?.status, presetAmounts]);
+
+  // 确保页面初次加载时有默认选中状态
+  useEffect(() => {
+    if (presetAmounts.length > 0 && selectedPreset === null && amount === 0) {
+      const defaultPreset = presetAmounts[0];
+      setTopUpCount(defaultPreset.value);
+      setStripeTopUpCount(defaultPreset.value);
+      setSelectedPreset(defaultPreset.value);
+      // 延迟计算金额，确保priceRatio已经设置
+      setTimeout(() => {
+        getAmount(defaultPreset.value);
+        getStripeAmount(defaultPreset.value);
+      }, 200);
+    }
+  }, [presetAmounts, selectedPreset, amount]);
+
+  // 微信支付倒计时功能
+  useEffect(() => {
+    let timer;
+    if (showPayModal) {
+      setCountdown(300); // 重置计时器为5分钟
+      timer = setInterval(() => {
+        setCountdown((prevCountdown) => {
+          if (prevCountdown <= 1) {
+            clearInterval(timer);
+            setShowPayModal(false);
+            setIsRunning(false); // 停止查询订单状态
+            return 0;
+          }
+          return prevCountdown - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [showPayModal]);
+
+  // 微信支付状态轮询
+  useEffect(() => {
+    let interval;
+    if (isRunning && showPayModal && tradeNo) {
+      interval = setInterval(async () => {
+        try {
+          const res = await API.get(`/api/user/lantu_status?trade_no=${tradeNo}`);
+          const { message, status } = res.data;
+          if (message === "success") {
+            if (status === "success") {
+              setShowPayModal(false);
+              setIsRunning(false);
+              showSuccess(t("充值成功"));
+              getUserQuota();
+            } else if (status === "expired") {
+              setShowPayModal(false);
+              setIsRunning(false);
+              showError(t("订单已过期"));
+            }
+            // 如果状态仍为 pending，继续轮询
+          } else {
+            setShowPayModal(false);
+            setIsRunning(false);
+            showError(t("获取订单状态失败"));
+          }
+        } catch (error) {
+          console.error('支付状态检查失败:', error);
+        }
+      }, 10000); // 每10秒检查一次
+    }
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isRunning, tradeNo, showPayModal]);
 
   const renderAmount = () => {
+    if (amount === 0) {
+      return t('计算中...');
+    }
     return amount + ' ' + t('元');
+  };
+
+  const renderStripeAmount = () => {
+    if (stripeAmount === 0) {
+      return t('计算中...');
+    }
+    return stripeAmount + ' ' + t('元');
   };
 
   const getAmount = async (value) => {
@@ -295,457 +675,1033 @@ const TopUp = () => {
         if (message === 'success') {
           setAmount(parseFloat(data));
         } else {
-          setAmount(0);
+          // 如果API返回错误，使用本地计算作为fallback
+          setAmount(parseFloat(value) * priceRatio);
           Toast.error({ content: '错误：' + data, id: 'getAmount' });
         }
       } else {
+        // 如果请求失败，使用本地计算作为fallback
+        setAmount(parseFloat(value) * priceRatio);
         showError(res);
       }
     } catch (err) {
       console.log(err);
+      // 如果网络错误，使用本地计算作为fallback
+      setAmount(parseFloat(value) * priceRatio);
     }
     setAmountLoading(false);
   };
 
+  const getStripeAmount = async (value) => {
+    // 如果没有启用Stripe支付，直接返回，不调用API
+    if (!enableStripeTopUp) {
+      return;
+    }
+    
+    if (value === undefined) {
+      value = stripeTopUpCount
+    }
+    setAmountLoading(true);
+    try {
+      const res = await API.post('/api/user/stripe/amount', {
+        amount: parseFloat(value),
+      });
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        // showInfo(message);
+        if (message === 'success') {
+          setStripeAmount(parseFloat(data));
+        } else {
+          // 如果API返回错误，使用本地计算作为fallback
+          setStripeAmount(parseFloat(value));
+          Toast.error({ content: '错误：' + data, id: 'getAmount' });
+        }
+      } else {
+        // 如果请求失败，使用本地计算作为fallback
+        setStripeAmount(parseFloat(value));
+        showError(res);
+      }
+    } catch (err) {
+      console.log(err);
+      // 如果网络错误，使用本地计算作为fallback
+      setStripeAmount(parseFloat(value));
+    } finally {
+      setAmountLoading(false);
+    }
+  }
+
   const handleCancel = () => {
     setOpen(false);
+  };
+
+  const handleStripeCancel = () => {
+    setStripeOpen(false);
   };
 
   const handleTransferCancel = () => {
     setOpenTransfer(false);
   };
 
+  // 选择预设充值额度
+  const selectPresetAmount = (preset) => {
+    setTopUpCount(preset.value);
+    setSelectedPreset(preset.value);
+    setAmount(preset.value * priceRatio);
+
+    setStripeTopUpCount(preset.value);
+    setStripeAmount(preset.value);
+
+    // 触发金额计算以获取准确的支付金额
+    getAmount(preset.value);
+    getStripeAmount(preset.value);
+  };
+
+  // 格式化大数字显示
+  const formatLargeNumber = (num) => {
+    return num.toString();
+  };
+
   return (
-    <div className="bg-gray-50">
-      <Layout>
-        <Layout.Content>
-          {/* 划转模态框 */}
-          <Modal
-            title={
-              <div className="flex items-center">
-                <IconCreditCard className="mr-2" />
-                {t('请输入要划转的数量')}
-              </div>
-            }
-            visible={openTransfer}
-            onOk={transfer}
-            onCancel={handleTransferCancel}
-            maskClosable={false}
-            size={'small'}
-            centered={true}
-          >
-            <div className="space-y-4 py-4">
-              <div>
-                <Typography.Text strong className="block mb-2">
-                  {t('可用额度')} {renderQuota(userState?.user?.aff_quota)}
-                </Typography.Text>
-                <Input
-                  value={userState?.user?.aff_quota}
-                  disabled={true}
-                  size="large"
-                  className="!rounded-lg"
-                />
-              </div>
-              <div>
-                <Typography.Text strong className="block mb-2">
-                  {t('划转额度')} {renderQuota(transferAmount)}{' '}
-                  {t('最低') + renderQuota(getQuotaPerUnit())}
-                </Typography.Text>
-                <InputNumber
-                  min={0}
-                  value={transferAmount}
-                  onChange={(value) => setTransferAmount(value)}
-                  disabled={false}
-                  size="large"
-                  className="!rounded-lg w-full"
-                />
-              </div>
-            </div>
-          </Modal>
+    <div className='mx-auto relative min-h-screen lg:min-h-0 mt-[60px]'>
+      {/* 划转模态框 */}
+      <Modal
+        title={
+          <div className='flex items-center'>
+            <CreditCard className='mr-2' size={18} />
+            {t('划转邀请额度')}
+          </div>
+        }
+        visible={openTransfer}
+        onOk={transfer}
+        onCancel={handleTransferCancel}
+        maskClosable={false}
+        size='small'
+        centered
+      >
+        <div className='space-y-4'>
+          <div>
+            <Typography.Text strong className='block mb-2'>
+              {t('可用邀请额度')}
+            </Typography.Text>
+            <Input
+              value={renderQuota(userState?.user?.aff_quota)}
+              disabled
+              size='large'
+            />
+          </div>
+          <div>
+            <Typography.Text strong className='block mb-2'>
+              {t('划转额度')} ({t('最低') + renderQuota(getQuotaPerUnit())})
+            </Typography.Text>
+            <InputNumber
+              min={getQuotaPerUnit()}
+              max={userState?.user?.aff_quota || 0}
+              value={transferAmount}
+              onChange={(value) => setTransferAmount(value)}
+              size='large'
+              className='w-full'
+            />
+          </div>
+        </div>
+      </Modal>
 
-          <Modal
-            title={
-              <div className="flex items-center">
-                <IconGift className="mr-2" />
-                {t('充值确认')}
-              </div>
-            }
-            visible={open}
-            onOk={onlineTopUp}
-            onCancel={handleCancel}
-            maskClosable={false}
-            size={'small'}
-            centered={true}
-            confirmLoading={confirmLoading}
-          >
-            <div className="space-y-3 py-4">
-              <div className="flex justify-between">
-                <Text strong>{t('充值数量')}：</Text>
-                <Text>{topUpCount}</Text>
-              </div>
-              <div className="flex justify-between">
-                <Text strong>{t('实付金额')}：</Text>
-                {amountLoading ? (
-                  <Skeleton.Title style={{ width: '60px', height: '16px' }} />
-                ) : (
-                  <Text type="danger">{renderAmount()}</Text>
-                )}
-              </div>
-            </div>
-          </Modal>
+      {/* 充值确认模态框 */}
+      <Modal
+        title={
+          <div className='flex items-center'>
+            <CreditCard className='mr-2' size={18} />
+            {t('充值确认')}
+          </div>
+        }
+        visible={open}
+        onOk={onlineTopUp}
+        onCancel={handleCancel}
+        maskClosable={false}
+        size='small'
+        centered
+        confirmLoading={confirmLoading}
+      >
+        <div className='space-y-4'>
+          <div className='flex justify-between items-center py-2'>
+            <Text strong>{t('充值数量')}：</Text>
+            <Text>${topUpCount}</Text>
+          </div>
+          <div className='flex justify-between items-center py-2'>
+            <Text strong>{t('基础额度')}：</Text>
+            <Text>{renderQuota(calculateQuota(topUpCount).baseQuota)}</Text>
+          </div>
+          <div className='flex justify-between items-center py-2'>
+            <Text strong>{t('加赠额度')}：</Text>
+            <Text type='success'>
+              {renderQuota(calculateQuota(topUpCount).extraQuota)}
+              <span className='ml-1 text-xs'>({getExtraRatioText(topUpCount)})</span>
+            </Text>
+          </div>
+          <div className='flex justify-between items-center py-2 border-t pt-2'>
+            <Text strong>{t('总计额度')}：</Text>
+            <Text type='primary' strong>
+              {renderQuota(calculateQuota(topUpCount).totalQuota)}
+            </Text>
+          </div>
+          <div className='flex justify-between items-center py-2'>
+            <Text strong>{t('实付金额')}：</Text>
+            {amountLoading ? (
+              <Skeleton.Title style={{ width: '60px', height: '16px' }} />
+            ) : (
+              <Text type='danger' strong>
+                {renderAmount()}
+              </Text>
+            )}
+          </div>
+          <div className='flex justify-between items-center py-2'>
+            <Text strong>{t('支付方式')}：</Text>
+            <Text>
+              {(() => {
+                const payMethod = payMethods.find(
+                  (method) => method.type === payWay,
+                );
+                if (payMethod) {
+                  return (
+                    <div className='flex items-center'>
+                      {payMethod.type === 'zfb' ? (
+                        <SiAlipay className='mr-1' size={16} />
+                      ) : payMethod.type === 'wx' ? (
+                        <SiWechat className='mr-1' size={16} />
+                      ) : (
+                        <CreditCard className='mr-1' size={16} />
+                      )}
+                      {payMethod.name}
+                    </div>
+                  );
+                } else {
+                  // 默认充值方式
+                  return payWay === 'zfb' ? (
+                    <div className='flex items-center'>
+                      <SiAlipay className='mr-1' size={16} />
+                      {t('支付宝')}
+                    </div>
+                  ) : (
+                    <div className='flex items-center'>
+                      <SiWechat className='mr-1' size={16} />
+                      {t('微信')}
+                    </div>
+                  );
+                }
+              })()}
+            </Text>
+          </div>
+        </div>
+      </Modal>
 
-          <div className="flex justify-center">
-            <div className="w-full">
-              <Card className="!rounded-2xl shadow-lg border-0">
-                <Card
-                  className="!rounded-2xl !border-0 !shadow-2xl overflow-hidden"
-                  style={{
-                    background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 25%, #2563eb 50%, #3b82f6 75%, #60a5fa 100%)',
-                    position: 'relative'
-                  }}
-                  bodyStyle={{ padding: 0 }}
-                >
-                  <div className="absolute inset-0 overflow-hidden">
-                    <div className="absolute -top-10 -right-10 w-40 h-40 bg-white opacity-5 rounded-full"></div>
-                    <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-white opacity-3 rounded-full"></div>
-                    <div className="absolute top-1/2 right-1/4 w-24 h-24 bg-yellow-400 opacity-10 rounded-full"></div>
+      <Modal
+        title={t('确定要充值吗')}
+        visible={stripeOpen}
+        onOk={onlineStripeTopUp}
+        onCancel={handleStripeCancel}
+        maskClosable={false}
+        size='small'
+        centered
+        confirmLoading={confirmLoading}
+      >
+        <div className='space-y-3'>
+          <div className='flex justify-between items-center'>
+            <Text strong>{t('充值数量')}：</Text>
+            <Text>${stripeTopUpCount}</Text>
+          </div>
+          <div className='flex justify-between items-center'>
+            <Text strong>{t('基础额度')}：</Text>
+            <Text>{renderQuota(calculateQuota(stripeTopUpCount).baseQuota)}</Text>
+          </div>
+          <div className='flex justify-between items-center'>
+            <Text strong>{t('加赠额度')}：</Text>
+            <Text type='success'>
+              {renderQuota(calculateQuota(stripeTopUpCount).extraQuota)}
+              <span className='ml-1 text-xs'>({getExtraRatioText(stripeTopUpCount)})</span>
+            </Text>
+          </div>
+          <div className='flex justify-between items-center border-t pt-2'>
+            <Text strong>{t('总计额度')}：</Text>
+            <Text type='primary' strong>
+              {renderQuota(calculateQuota(stripeTopUpCount).totalQuota)}
+            </Text>
+          </div>
+          <div className='flex justify-between items-center'>
+            <Text strong>{t('实付金额')}：</Text>
+            <Text type='danger' strong>{renderStripeAmount()}</Text>
+          </div>
+          <Text type='tertiary' className='text-center block mt-3'>
+            {t('是否确认充值？')}
+          </Text>
+        </div>
+      </Modal>
+
+      {/* 微信支付二维码模态框 */}
+      <Modal
+        title={t('微信支付')}
+        visible={showPayModal}
+        onCancel={() => setShowPayModal(false)}
+        maskClosable={false}
+        size='small'
+        centered
+        footer={
+          <Button type='primary' onClick={() => setShowPayModal(false)}>
+            {t('我已支付完成')}
+          </Button>
+        }
+      >
+        <div className='space-y-4 text-center'>
+          {payUrl && (
+            <img 
+              src={payUrl} 
+              alt={t('支付二维码')} 
+              style={{ maxWidth: '200px', margin: '0 auto' }}
+              className='block mx-auto'
+            />
+          )}
+          <Text type='tertiary' className='block'>
+            {t('微信扫一扫，或长按识别二维码')}
+          </Text>
+          <Text type='warning' className='block'>
+            {t('订单将在')} {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')} {t('后失效')}
+          </Text>
+          <Text type='tertiary' className='text-xs'>
+            {t('支付后点击"我已支付完成"，在日志页即可查看充值详情')}
+          </Text>
+        </div>
+      </Modal>
+
+      <div className='grid grid-cols-1 lg:grid-cols-12 gap-6'>
+        {/* 左侧充值区域 */}
+        <div className='lg:col-span-7 space-y-6 w-full'>
+          {/* 在线充值卡片 */}
+          <Card
+            className='!rounded-2xl'
+            shadows='always'
+            bordered={false}
+            header={
+              <div className='px-5 py-4 pb-0'>
+                <div className='flex items-center justify-between'>
+                  <div className='flex items-center'>
+                    <Avatar
+                      className='mr-3 shadow-md flex-shrink-0'
+                      color='blue'
+                    >
+                      <CreditCard size={24} />
+                    </Avatar>
+                    <div>
+                      <Title heading={5} style={{ margin: 0 }}>
+                        {t('在线充值')}
+                      </Title>
+                      <Text type='tertiary' className='text-sm'>
+                        {t('快速方便的充值方式')}
+                      </Text>
+                    </div>
                   </div>
 
-                  <div className="relative p-4 sm:p-6 md:p-8" style={{ color: 'white' }}>
-                    <div className="flex justify-between items-start mb-4 sm:mb-6">
-                      <div className="flex-1 min-w-0">
-                        {userDataLoading ? (
-                          <Skeleton.Title style={{ width: '200px', height: '20px' }} />
+                  <div className='flex items-center'>
+                    {userDataLoading ? (
+                      <Skeleton.Paragraph style={{ width: '120px' }} rows={1} />
+                    ) : (
+                      <Text type='tertiary' className='hidden sm:block'>
+                        <div className='flex items-center'>
+                          <User size={14} className='mr-1' />
+                          <span className='hidden md:inline'>
+                            {getUsername()} ({getUserRole()})
+                          </span>
+                          <span className='md:hidden'>{getUsername()}</span>
+                        </div>
+                      </Text>
+                    )}
+                  </div>
+                </div>
+              </div>
+            }
+          >
+            <div className='space-y-4'>
+              {/* 账户余额信息 */}
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-4 mb-2'>
+                <Card className='!rounded-2xl'>
+                  <Text type='tertiary' className='mb-1'>
+                    {t('当前余额')}
+                  </Text>
+                  {userDataLoading ? (
+                    <Skeleton.Title
+                      style={{ width: '100px', height: '30px' }}
+                    />
+                  ) : (
+                    <div className='text-xl font-semibold mt-2'>
+                      {renderQuota(userState?.user?.quota || userQuota)}
+                    </div>
+                  )}
+                </Card>
+                <Card className='!rounded-2xl'>
+                  <Text type='tertiary' className='mb-1'>
+                    {t('历史消耗')}
+                  </Text>
+                  {userDataLoading ? (
+                    <Skeleton.Title
+                      style={{ width: '100px', height: '30px' }}
+                    />
+                  ) : (
+                    <div className='text-xl font-semibold mt-2'>
+                      {renderQuota(userState?.user?.used_quota || 0)}
+                    </div>
+                  )}
+                </Card>
+              </div>
+
+              {enableOnlineTopUp && (
+                <>
+                  {/* 预设充值额度卡片网格 */}
+                  <div>
+                    <Text strong className='block mb-3'>
+                      {t('选择充值额度')}
+                    </Text>
+                    <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3'>
+                      {presetAmounts.map((preset, index) => {
+                        const quotaInfo = calculateQuota(preset.value);
+                        return (
+                          <Card
+                            key={index}
+                            onClick={() => selectPresetAmount(preset)}
+                            className={`cursor-pointer !rounded-2xl transition-all duration-200 hover:shadow-md hover:scale-105 ${selectedPreset === preset.value
+                              ? 'border-2 border-blue-500 bg-blue-50 shadow-lg transform scale-105 ring-2 ring-blue-200 ring-opacity-50'
+                              : 'border border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                              }`}
+                            bodyStyle={{ textAlign: 'center', padding: '12px', position: 'relative' }}
+                          >
+                            {selectedPreset === preset.value && (
+                              <div className='absolute top-2 right-2'>
+                                <div className='w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center'>
+                                  <Check size={12} className='text-white' />
+                                </div>
+                              </div>
+                            )}
+                            <div className={`font-medium text-lg flex items-center justify-center mb-1 ${selectedPreset === preset.value ? 'text-blue-700' : ''}`}>
+                              <Coins size={16} className={`mr-0.5 ${selectedPreset === preset.value ? 'text-blue-600' : ''}`} />
+                              ${formatLargeNumber(preset.value)}
+                            </div>
+                            <div className={`text-xs mb-1 ${selectedPreset === preset.value ? 'text-blue-600' : 'text-gray-500'}`}>
+                              {t('实付')} ￥{(preset.value * priceRatio).toFixed(2)}
+                            </div>
+                            <div className={`text-xs font-medium ${selectedPreset === preset.value ? 'text-green-700' : 'text-green-600'}`}>
+                              {getExtraRatioText(preset.value)}
+                            </div>
+                            <div className={`text-xs mt-1 ${selectedPreset === preset.value ? 'text-blue-500' : 'text-gray-400'}`}>
+                              ~{formatLargeNumber(Math.floor(quotaInfo.totalQuota / 1000))}K tokens
+                            </div>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {/* 桌面端显示的自定义金额和支付按钮 */}
+                  <div className='hidden md:block space-y-4'>
+                    <Divider style={{ margin: '32px 0' }}>
+                      <Text className='text-sm font-medium'>
+                        {t('或输入自定义金额')}
+                      </Text>
+                    </Divider>
+
+                    <div>
+                      <div className='flex justify-between mb-2'>
+                        <Text strong>{t('充值数量')}</Text>
+                        {amountLoading ? (
+                          <Skeleton.Title
+                            style={{ width: '80px', height: '16px' }}
+                          />
                         ) : (
-                          <div className="text-base sm:text-lg font-semibold truncate" style={{ color: 'white' }}>
-                            {t('尊敬的')} {getUsername()}
+                          <div className='text-right'>
+                            <Text type='tertiary' className='block'>
+                              {t('实付金额：') + renderAmount()}
+                            </Text>
+                            <Text type='success' className='text-xs'>
+                              {getExtraRatioText(topUpCount)} • {t('总计')} {renderQuota(calculateQuota(topUpCount).totalQuota)}
+                            </Text>
                           </div>
                         )}
                       </div>
-                      <div
-                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0 ml-2"
-                        style={{
-                          background: `linear-gradient(135deg, ${stringToColor(getUsername())} 0%, #f59e0b 100%)`
+                      <InputNumber
+                        disabled={!enableOnlineTopUp}
+                        placeholder={
+                          t('充值数量，最低 ') + renderQuotaWithAmount(minTopUp)
+                        }
+                        value={topUpCount}
+                        min={minTopUp}
+                        max={999999999}
+                        step={1}
+                        precision={0}
+                        onChange={async (value) => {
+                          if (value && value >= 1) {
+                            setTopUpCount(value);
+                            setSelectedPreset(null);
+                            await getAmount(value);
+                          }
                         }}
-                      >
-                        <IconCreditCard size="default" style={{ color: 'white' }} />
-                      </div>
+                        onBlur={(e) => {
+                          const value = parseInt(e.target.value);
+                          if (!value || value < 1) {
+                            setTopUpCount(1);
+                            getAmount(1);
+                          }
+                        }}
+                        size='large'
+                        className='w-full'
+                        formatter={(value) => (value ? `${value}` : '')}
+                        parser={(value) =>
+                          value ? parseInt(value.replace(/[^\d]/g, '')) : 0
+                        }
+                      />
                     </div>
 
-                    <div className="mb-4 sm:mb-6">
-                      <div className="text-xs sm:text-sm mb-1 sm:mb-2" style={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                        {t('当前余额')}
-                      </div>
-                      {userDataLoading ? (
-                        <Skeleton.Title style={{ width: '180px', height: '32px' }} />
+                    <div>
+                      <Text strong className='block mb-3'>
+                        {t('选择支付方式')}
+                      </Text>
+                      {payMethods.filter(method => method.type !== 'zfb' && method.type !== 'alipay').length === 2 ? (
+                        <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+                          {payMethods.filter(method => method.type !== 'zfb' && method.type !== 'alipay').map((payMethod) => (
+                            <Button
+                              key={payMethod.type}
+                              type='primary'
+                              onClick={() => preTopUp(payMethod.type)}
+                              size='large'
+                              disabled={!enableOnlineTopUp}
+                              loading={paymentLoading && payWay === payMethod.type}
+                              icon={
+                                payMethod.type === 'zfb' ? (
+                                  <SiAlipay size={16} />
+                                ) : payMethod.type === 'wx' ? (
+                                  <SiWechat size={16} />
+                                ) : (
+                                  <CreditCard size={16} />
+                                )
+                              }
+                              style={{
+                                height: '40px',
+                                color: payMethod.color,
+                              }}
+                              className='transition-all hover:shadow-md w-full'
+                            >
+                              <span className='ml-1'>{payMethod.name}</span>
+                            </Button>
+                          ))}
+                        </div>
+                      ) : payMethods.filter(method => method.type !== 'zfb' && method.type !== 'alipay').length === 3 ? (
+                        <div className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
+                          {payMethods.filter(method => method.type !== 'zfb' && method.type !== 'alipay').map((payMethod) => (
+                            <Button
+                              key={payMethod.type}
+                              type='primary'
+                              onClick={() => preTopUp(payMethod.type)}
+                              size='large'
+                              disabled={!enableOnlineTopUp}
+                              loading={paymentLoading && payWay === payMethod.type}
+                              icon={
+                                payMethod.type === 'zfb' ? (
+                                  <SiAlipay size={16} />
+                                ) : payMethod.type === 'wx' ? (
+                                  <SiWechat size={16} />
+                                ) : (
+                                  <CreditCard size={16} />
+                                )
+                              }
+                              style={{
+                                height: '40px',
+                                color: payMethod.color,
+                              }}
+                              className='transition-all hover:shadow-md w-full'
+                            >
+                              <span className='ml-1'>{payMethod.name}</span>
+                            </Button>
+                          ))}
+                        </div>
+                      ) : payMethods.filter(method => method.type !== 'zfb' && method.type !== 'alipay').length > 3 ? (
+                        <div className='grid grid-cols-2 sm:grid-cols-4 gap-3'>
+                          {payMethods.filter(method => method.type !== 'zfb' && method.type !== 'alipay').map((payMethod) => (
+                            <Card
+                              key={payMethod.type}
+                              onClick={() => preTopUp(payMethod.type)}
+                              disabled={!enableOnlineTopUp}
+                              className={`cursor-pointer !rounded-xl p-0 transition-all hover:shadow-md ${paymentLoading && payWay === payMethod.type
+                                ? 'border-blue-400'
+                                : 'border-gray-200 hover:border-gray-300'
+                                }`}
+                              bodyStyle={{
+                                padding: '10px',
+                                textAlign: 'center',
+                                opacity: !enableOnlineTopUp ? 0.5 : 1
+                              }}
+                            >
+                              {paymentLoading && payWay === payMethod.type ? (
+                                <div className='flex flex-col items-center justify-center h-full'>
+                                  <div className='mb-1'>
+                                    <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500'></div>
+                                  </div>
+                                  <div className='text-xs text-gray-500'>{t('处理中')}</div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className='flex items-center justify-center mb-1'>
+                                    {payMethod.type === 'zfb' ? (
+                                      <SiAlipay size={20} color={payMethod.color} />
+                                    ) : payMethod.type === 'wx' ? (
+                                      <SiWechat size={20} color={payMethod.color} />
+                                    ) : (
+                                      <CreditCard size={20} color={payMethod.color} />
+                                    )}
+                                  </div>
+                                  <div className='text-sm font-medium'>{payMethod.name}</div>
+                                </>
+                              )}
+                            </Card>
+                          ))}
+                        </div>
                       ) : (
-                        <div className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-wide" style={{ color: 'white' }}>
-                          {renderQuota(userState?.user?.quota || userQuota)}
+                        <div className='grid grid-cols-1 gap-3'>
+                          {payMethods.filter(method => method.type !== 'zfb' && method.type !== 'alipay').map((payMethod) => (
+                            <Button
+                              key={payMethod.type}
+                              type='primary'
+                              onClick={() => preTopUp(payMethod.type)}
+                              size='large'
+                              disabled={!enableOnlineTopUp}
+                              loading={paymentLoading && payWay === payMethod.type}
+                              icon={
+                                payMethod.type === 'zfb' ? (
+                                  <SiAlipay size={16} />
+                                ) : payMethod.type === 'wx' ? (
+                                  <SiWechat size={16} />
+                                ) : (
+                                  <CreditCard size={16} />
+                                )
+                              }
+                              style={{
+                                height: '40px',
+                                color: payMethod.color,
+                              }}
+                              className='transition-all hover:shadow-md w-full'
+                            >
+                              <span className='ml-1'>{payMethod.name}</span>
+                            </Button>
+                          ))}
                         </div>
                       )}
                     </div>
+                  </div>
 
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end">
-                      <div className="grid grid-cols-3 gap-2 sm:flex sm:space-x-6 lg:space-x-8 mb-3 sm:mb-0">
-                        <div className="text-center sm:text-left">
-                          <div className="text-xs" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
-                            {t('历史消耗')}
-                          </div>
-                          {userDataLoading ? (
-                            <Skeleton.Title style={{ width: '60px', height: '14px' }} />
-                          ) : (
-                            <div className="text-xs sm:text-sm font-medium truncate" style={{ color: 'white' }}>
-                              {renderQuota(userState?.user?.used_quota || 0)}
-                            </div>
-                          )}
-                        </div>
-                        <div className="text-center sm:text-left">
-                          <div className="text-xs" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
-                            {t('用户分组')}
-                          </div>
-                          {userDataLoading ? (
-                            <Skeleton.Title style={{ width: '50px', height: '14px' }} />
-                          ) : (
-                            <div className="text-xs sm:text-sm font-medium truncate" style={{ color: 'white' }}>
-                              {userState?.user?.group || t('默认')}
-                            </div>
-                          )}
-                        </div>
-                        <div className="text-center sm:text-left">
-                          <div className="text-xs" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
-                            {t('用户角色')}
-                          </div>
-                          {userDataLoading ? (
-                            <Skeleton.Title style={{ width: '60px', height: '14px' }} />
-                          ) : (
-                            <div className="text-xs sm:text-sm font-medium truncate" style={{ color: 'white' }}>
-                              {getUserRole()}
-                            </div>
-                          )}
-                        </div>
+                  {/* 加赠方案说明 */}
+                  <div className='mt-8 mb-8'>
+                    <Card className='!rounded-2xl bg-gradient-to-r from-blue-50 to-purple-50'>
+                      <div className='flex items-start mb-4'>
+                        <Gift size={16} className='mr-2 mt-0.5 text-purple-600' />
+                        <Text strong className='text-purple-800'>{t('充值加赠方案')}</Text>
                       </div>
+                      <div className='grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-4'>
+                        {presetAmounts.map((preset, index) => (
+                          <div key={index} className='text-center p-3 bg-white rounded-lg shadow-sm'>
+                            <div className='font-medium text-sm'>${preset.value}+</div>
+                            <div className='text-green-600 font-medium'>{getExtraRatioText(preset.value)}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <Text type='tertiary' className='text-xs block'>
+                        {t('充值金额越高，加赠比例越多，最高可获得40%额外奖励')}
+                      </Text>
+                    </Card>
+                  </div>
+                </>
+              )}
 
-                      <div className="self-end sm:self-auto">
-                        {userDataLoading ? (
-                          <Skeleton.Title style={{ width: '50px', height: '24px' }} />
+              {!enableOnlineTopUp && !enableStripeTopUp && (
+                <Banner
+                  type='warning'
+                  description={t(
+                    '管理员未开启在线充值功能，请联系管理员开启或使用兑换码充值。',
+                  )}
+                  closeIcon={null}
+                  className='!rounded-2xl'
+                />
+              )}
+
+              {enableStripeTopUp && (
+                <>
+                  {/* 桌面端显示的自定义金额和支付按钮 */}
+                  <div className='hidden md:block space-y-4 mt-8'>
+                    <Divider style={{ margin: '32px 0' }}>
+                      <Text className='text-sm font-medium'>
+                        {t(!enableOnlineTopUp ? '或输入自定义金额' : 'Stripe')}
+                      </Text>
+                    </Divider>
+
+                    <div>
+                      <div className='flex justify-between mb-2'>
+                        <Text strong>{t('充值数量')}</Text>
+                        {amountLoading ? (
+                          <Skeleton.Title
+                            style={{ width: '80px', height: '16px' }}
+                          />
                         ) : (
-                          <div
-                            className="px-2 py-1 sm:px-3 rounded-md text-xs sm:text-sm font-medium inline-block"
-                            style={{
-                              backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                              color: 'white',
-                              backdropFilter: 'blur(10px)'
-                            }}
-                          >
-                            ID: {userState?.user?.id || '---'}
+                          <div className='text-right'>
+                            <Text type='tertiary' className='block'>
+                              {t('实付金额：') + renderStripeAmount()}
+                            </Text>
+                            <Text type='success' className='text-xs'>
+                              {getExtraRatioText(stripeTopUpCount)} • {t('总计')} {renderQuota(calculateQuota(stripeTopUpCount).totalQuota)}
+                            </Text>
                           </div>
                         )}
                       </div>
-                    </div>
-
-                    <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-yellow-400 via-orange-400 to-red-400" style={{ opacity: 0.6 }}></div>
-                  </div>
-                </Card>
-
-                <div className="p-6">
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* 邀请信息部分 */}
-                    <div>
-                      <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center">
-                          <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center mr-4">
-                            <IconLink size="large" className="text-orange-500" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-3">
-                              <Text className="text-xl font-semibold">{t('邀请信息')}</Text>
-                              <Button
-                                type="primary"
-                                theme="solid"
-                                onClick={() => setOpenTransfer(true)}
-                                size="small"
-                                className="!rounded-lg !bg-blue-500 hover:!bg-blue-600"
-                                icon={<IconCreditCard />}
-                              >
-                                {t('划转')}
-                              </Button>
-                            </div>
-                            <div className="text-gray-500 text-sm">{t('管理您的邀请链接和收益')}</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          <Card
-                            className="!rounded-2xl text-center"
-                            bodyStyle={{ padding: '16px' }}
-                            shadows='hover'
-                          >
-                            <div className="text-gray-600 text-xs font-medium">{t('待使用收益')}</div>
-                            <div className="text-gray-900 text-lg font-bold mt-1">
-                              {renderQuota(userState?.user?.aff_quota)}
-                            </div>
-
-                          </Card>
-                          <Card
-                            className="!rounded-2xl text-center"
-                            bodyStyle={{ padding: '16px' }}
-                            shadows='hover'
-                          >
-                            <div className="text-gray-600 text-xs font-medium">{t('总收益')}</div>
-                            <div className="text-gray-900 text-lg font-bold mt-1">
-                              {renderQuota(userState?.user?.aff_history_quota)}
-                            </div>
-                          </Card>
-                          <Card
-                            className="!rounded-2xl text-center"
-                            bodyStyle={{ padding: '16px' }}
-                            shadows='hover'
-                          >
-                            <div className="text-gray-600 text-xs font-medium">{t('邀请人数')}</div>
-                            <div className="text-gray-900 text-lg font-bold mt-1">
-                              {userState?.user?.aff_count || 0}
-                            </div>
-                          </Card>
-                        </div>
-
-                        <div className="bg-white rounded-lg p-3">
-                          <Typography.Text strong className="block mb-2 text-sm">{t('邀请链接')}</Typography.Text>
-                          <Input
-                            value={affLink}
-                            onClick={handleAffLinkClick}
-                            readOnly
-                            size="large"
-                            className="!rounded-lg"
-                            prefix={<IconLink />}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center mb-6">
-                        <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mr-4">
-                          <IconGift size="large" className="text-green-500" />
-                        </div>
-                        <div>
-                          <Text className="text-xl font-semibold">{t('兑换余额')}</Text>
-                          <div className="text-gray-500 text-sm">{t('使用兑换码充值余额')}</div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div>
-                          <Text strong className="block mb-2">{t('兑换码')}</Text>
-                          <Input
-                            placeholder={t('请输入兑换码')}
-                            value={redemptionCode}
-                            onChange={(value) => setRedemptionCode(value)}
-                            size="large"
-                            className="!rounded-lg"
-                            prefix={<IconGift />}
-                          />
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row gap-3">
-                          {topUpLink && (
-                            <Button
-                              type="primary"
-                              theme="solid"
-                              onClick={openTopUpLink}
-                              size="large"
-                              className="!rounded-lg flex-1"
-                              icon={<IconLink />}
-                            >
-                              {t('获取兑换码')}
-                            </Button>
-                          )}
-                          <Button
-                            type="warning"
-                            theme="solid"
-                            onClick={topUp}
-                            disabled={isSubmitting}
-                            loading={isSubmitting}
-                            size="large"
-                            className="!rounded-lg flex-1"
-                          >
-                            {isSubmitting ? t('兑换中...') : t('兑换')}
-                          </Button>
-                        </div>
-                      </div>
+                      <InputNumber
+                        disabled={!enableStripeTopUp}
+                        placeholder={
+                          t('充值数量，最低 ') + renderQuotaWithAmount(stripeMinTopUp)
+                        }
+                        value={stripeTopUpCount}
+                        min={stripeMinTopUp}
+                        max={999999999}
+                        step={1}
+                        precision={0}
+                        onChange={async (value) => {
+                          if (value && value >= 1) {
+                            setStripeTopUpCount(value);
+                            setSelectedPreset(null);
+                            await getStripeAmount(value);
+                          }
+                        }}
+                        onBlur={(e) => {
+                          const value = parseInt(e.target.value);
+                          if (!value || value < 1) {
+                            setStripeTopUpCount(1);
+                            getStripeAmount(1);
+                          }
+                        }}
+                        size='large'
+                        className='w-full'
+                        formatter={(value) => (value ? `${value}` : '')}
+                        parser={(value) =>
+                          value ? parseInt(value.replace(/[^\d]/g, '')) : 0
+                        }
+                      />
                     </div>
 
                     <div>
-                      <div className="flex items-center mb-6">
-                        <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mr-4">
-                          <IconPlus size="large" className="text-blue-500" />
-                        </div>
-                        <div>
-                          <Text className="text-xl font-semibold">{t('在线充值')}</Text>
-                          <div className="text-gray-500 text-sm">{t('支持多种支付方式')}</div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div>
-                          <div className="flex justify-between mb-2">
-                            <Text strong>{t('充值数量')}</Text>
-                            {amountLoading ? (
-                              <Skeleton.Title style={{ width: '80px', height: '14px' }} />
-                            ) : (
-                              <Text type="tertiary">{t('实付金额：') + ' ' + renderAmount()}</Text>
-                            )}
-                          </div>
-                          <InputNumber
-                            disabled={!enableOnlineTopUp}
-                            placeholder={
-                              t('充值数量，最低 ') + renderQuotaWithAmount(minTopUp)
-                            }
-                            value={topUpCount}
-                            min={minTopUp}
-                            max={999999999}
-                            step={1}
-                            precision={0}
-                            onChange={async (value) => {
-                              if (value && value >= 1) {
-                                setTopUpCount(value);
-                                await getAmount(value);
-                              }
-                            }}
-                            onBlur={(e) => {
-                              const value = parseInt(e.target.value);
-                              if (!value || value < 1) {
-                                setTopUpCount(1);
-                                getAmount(1);
-                              }
-                            }}
-                            size="large"
-                            className="!rounded-lg w-full"
-                            prefix={<IconCreditCard />}
-                            formatter={(value) => value ? `${value}` : ''}
-                            parser={(value) => value ? parseInt(value.replace(/[^\d]/g, '')) : 0}
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <Button
-                            type="primary"
-                            theme="solid"
-                            onClick={async () => {
-                              preTopUp('zfb');
-                            }}
-                            size="large"
-                            className="!rounded-lg !bg-blue-500 hover:!bg-blue-600 h-14"
-                            disabled={!enableOnlineTopUp}
-                            loading={paymentLoading}
-                            icon={<SiAlipay size={20} />}
-                          >
-                            <span className="ml-2">{t('支付宝')}</span>
-                          </Button>
-                          <Button
-                            type="primary"
-                            theme="solid"
-                            onClick={async () => {
-                              preTopUp('wx');
-                            }}
-                            size="large"
-                            className="!rounded-lg !bg-green-500 hover:!bg-green-600 h-14"
-                            disabled={!enableOnlineTopUp}
-                            loading={paymentLoading}
-                            icon={<SiWechat size={20} />}
-                          >
-                            <span className="ml-2">{t('微信')}</span>
-                          </Button>
-                        </div>
-
-                        {!enableOnlineTopUp && (
-                          <Banner
-                            fullMode={false}
-                            type="warning"
-                            icon={null}
-                            closeIcon={null}
-                            className="!rounded-lg"
-                            title={
-                              <div style={{ fontWeight: 600, fontSize: '14px', lineHeight: '20px' }}>
-                                {t('在线充值功能未开启')}
-                              </div>
-                            }
-                            description={
-                              <div>
-                                {t('管理员未开启在线充值功能，请联系管理员开启或使用兑换码充值。')}
-                              </div>
-                            }
-                          />
-                        )}
+                      <Text strong className='block mb-3'>
+                        {t('选择支付方式')}
+                      </Text>
+                      <div className='grid grid-cols-1 gap-3'>
+                        <Button
+                          key='stripe'
+                          type='primary'
+                          onClick={() => stripePreTopUp()}
+                          size='large'
+                          disabled={!enableStripeTopUp}
+                          loading={paymentLoading && payWay === 'stripe'}
+                          icon={<CreditCard size={16} />}
+                          style={{
+                            height: '40px',
+                            color: '#b161fe',
+                          }}
+                          className='transition-all hover:shadow-md w-full'
+                        >
+                          <span className='ml-1'>Stripe</span>
+                        </Button>
                       </div>
                     </div>
                   </div>
+                </>
+              )}
+
+              <Divider style={{ margin: '32px 0' }}>
+                <Text className='text-sm font-medium'>{t('兑换码充值')}</Text>
+              </Divider>
+
+              <Card className='!rounded-2xl'>
+                <div className='flex items-start mb-4'>
+                  <Gift size={16} className='mr-2 mt-0.5' />
+                  <Text strong>{t('使用兑换码快速充值')}</Text>
+                </div>
+
+                <div className='mb-4'>
+                  <Input
+                    placeholder={t('请输入兑换码')}
+                    value={redemptionCode}
+                    onChange={(value) => setRedemptionCode(value)}
+                    size='large'
+                  />
+                </div>
+
+                <div className='flex flex-col sm:flex-row gap-3'>
+                  {topUpLink && (
+                    <Button
+                      type='secondary'
+                      onClick={openTopUpLink}
+                      size='large'
+                      className='flex-1'
+                      icon={<LinkIcon size={16} />}
+                      style={{ height: '40px' }}
+                    >
+                      {t('获取兑换码')}
+                    </Button>
+                  )}
+                  <Button
+                    type='primary'
+                    onClick={topUp}
+                    disabled={isSubmitting || !redemptionCode}
+                    loading={isSubmitting}
+                    size='large'
+                    className='flex-1'
+                    style={{ height: '40px' }}
+                  >
+                    {isSubmitting ? t('兑换中...') : t('兑换')}
+                  </Button>
                 </div>
               </Card>
             </div>
+          </Card>
+        </div>
+
+        {/* 右侧邀请信息卡片 */}
+        <div className='lg:col-span-5'>
+          <Card
+            className='!rounded-2xl'
+            shadows='always'
+            bordered={false}
+            header={
+              <div className='px-5 py-4 pb-0'>
+                <div className='flex items-center justify-between'>
+                  <div className='flex items-center'>
+                    <Avatar
+                      className='mr-3 shadow-md flex-shrink-0'
+                      color='green'
+                    >
+                      <Users size={24} />
+                    </Avatar>
+                    <div>
+                      <Title heading={5} style={{ margin: 0 }}>
+                        {t('邀请奖励')}
+                      </Title>
+                      <Text type='tertiary' className='text-sm'>
+                        {t('邀请好友获得额外奖励')}
+                      </Text>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            }
+          >
+            <div className='space-y-6'>
+              <div className='grid grid-cols-1 gap-4'>
+                <Card className='!rounded-2xl'>
+                  <div className='flex justify-between items-center'>
+                    <Text type='tertiary'>{t('待使用收益')}</Text>
+                    <Button
+                      type='primary'
+                      theme='solid'
+                      size='small'
+                      disabled={
+                        !userState?.user?.aff_quota ||
+                        userState?.user?.aff_quota <= 0
+                      }
+                      onClick={() => setOpenTransfer(true)}
+                    >
+                      {t('划转到余额')}
+                    </Button>
+                  </div>
+                  <div className='text-2xl font-semibold mt-2'>
+                    {renderQuota(userState?.user?.aff_quota || 0)}
+                  </div>
+                </Card>
+
+                <div className='grid grid-cols-2 gap-4'>
+                  <Card className='!rounded-2xl'>
+                    <Text type='tertiary'>{t('总收益')}</Text>
+                    <div className='text-xl font-semibold mt-2'>
+                      {renderQuota(userState?.user?.aff_history_quota || 0)}
+                    </div>
+                  </Card>
+                  <Card className='!rounded-2xl'>
+                    <Text type='tertiary'>{t('邀请人数')}</Text>
+                    <div className='text-xl font-semibold mt-2 flex items-center'>
+                      <Users size={16} className='mr-1' />
+                      {userState?.user?.aff_count || 0}
+                    </div>
+                  </Card>
+                </div>
+              </div>
+
+              <div className='space-y-4'>
+                <Title heading={6}>{t('邀请链接')}</Title>
+                <Input
+                  value={affLink}
+                  readonly
+                  size='large'
+                  suffix={
+                    <Button
+                      type='primary'
+                      theme='light'
+                      onClick={handleAffLinkClick}
+                      icon={<Copy size={14} />}
+                    >
+                      {t('复制')}
+                    </Button>
+                  }
+                />
+
+                <div className='mt-4'>
+                  <Card className='!rounded-2xl'>
+                    <div className='space-y-4'>
+                      <div className='flex items-start'>
+                        <div className='w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 mr-3 flex-shrink-0'></div>
+                        <Text type='tertiary' className='text-sm leading-6'>
+                          {t('邀请好友注册，好友充值后您可获得相应奖励')}
+                        </Text>
+                      </div>
+                      <div className='flex items-start'>
+                        <div className='w-1.5 h-1.5 rounded-full bg-green-500 mt-2 mr-3 flex-shrink-0'></div>
+                        <Text type='tertiary' className='text-sm leading-6'>
+                          {t('通过划转功能将奖励额度转入到您的账户余额中')}
+                        </Text>
+                      </div>
+                      <div className='flex items-start'>
+                        <div className='w-1.5 h-1.5 rounded-full bg-purple-500 mt-2 mr-3 flex-shrink-0'></div>
+                        <Text type='tertiary' className='text-sm leading-6'>
+                          {t('邀请的好友越多，获得的奖励越多')}
+                        </Text>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* 移动端底部固定的自定义金额和支付区域 */}
+      {enableOnlineTopUp && (
+        <div
+          className='md:hidden fixed bottom-0 left-0 right-0 p-4 shadow-lg z-50'
+          style={{ background: 'var(--semi-color-bg-0)' }}
+        >
+          <div className='space-y-4'>
+            <div>
+              <div className='flex justify-between mb-2'>
+                <Text strong>{t('充值数量')}</Text>
+                {amountLoading ? (
+                  <Skeleton.Title style={{ width: '80px', height: '16px' }} />
+                ) : (
+                  <div className='text-right'>
+                    <Text type='tertiary' className='block'>
+                      {t('实付金额：') + renderAmount()}
+                    </Text>
+                    <Text type='success' className='text-xs'>
+                      {getExtraRatioText(topUpCount)} • {t('总计')} {renderQuota(calculateQuota(topUpCount).totalQuota)}
+                    </Text>
+                  </div>
+                )}
+              </div>
+              <InputNumber
+                disabled={!enableOnlineTopUp}
+                placeholder={
+                  t('充值数量，最低 ') + renderQuotaWithAmount(minTopUp)
+                }
+                value={topUpCount}
+                min={minTopUp}
+                max={999999999}
+                step={1}
+                precision={0}
+                onChange={async (value) => {
+                  if (value && value >= 1) {
+                    setTopUpCount(value);
+                    setSelectedPreset(null);
+                    await getAmount(value);
+                  }
+                }}
+                onBlur={(e) => {
+                  const value = parseInt(e.target.value);
+                  if (!value || value < 1) {
+                    setTopUpCount(1);
+                    getAmount(1);
+                  }
+                }}
+                className='w-full'
+                formatter={(value) => (value ? `${value}` : '')}
+                parser={(value) =>
+                  value ? parseInt(value.replace(/[^\d]/g, '')) : 0
+                }
+              />
+            </div>
+
+            <div>
+              {payMethods.filter(method => method.type !== 'zfb' && method.type !== 'alipay').length === 2 ? (
+                <div className='grid grid-cols-2 gap-3'>
+                  {payMethods.filter(method => method.type !== 'zfb' && method.type !== 'alipay').map((payMethod) => (
+                    <Button
+                      key={payMethod.type}
+                      type='primary'
+                      onClick={() => preTopUp(payMethod.type)}
+                      disabled={!enableOnlineTopUp}
+                      loading={paymentLoading && payWay === payMethod.type}
+                      icon={
+                        payMethod.type === 'zfb' ? (
+                          <SiAlipay size={16} />
+                        ) : payMethod.type === 'wx' ? (
+                          <SiWechat size={16} />
+                        ) : (
+                          <CreditCard size={16} />
+                        )
+                      }
+                      style={{
+                        color: payMethod.color,
+                      }}
+                      className='h-10'
+                    >
+                      <span className='ml-1'>{payMethod.name}</span>
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <div className='grid grid-cols-4 gap-2'>
+                  {payMethods.filter(method => method.type !== 'zfb' && method.type !== 'alipay').map((payMethod) => (
+                    <Card
+                      key={payMethod.type}
+                      onClick={() => preTopUp(payMethod.type)}
+                      disabled={!enableOnlineTopUp}
+                      className={`cursor-pointer !rounded-xl p-0 transition-all ${paymentLoading && payWay === payMethod.type
+                        ? 'border-blue-400'
+                        : 'border-gray-200'
+                        }`}
+                      bodyStyle={{
+                        padding: '8px',
+                        textAlign: 'center',
+                        opacity: !enableOnlineTopUp ? 0.5 : 1
+                      }}
+                    >
+                      {paymentLoading && payWay === payMethod.type ? (
+                        <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mx-auto'></div>
+                      ) : (
+                        <>
+                          <div className='flex justify-center'>
+                            {payMethod.type === 'zfb' ? (
+                              <SiAlipay size={18} color={payMethod.color} />
+                            ) : payMethod.type === 'wx' ? (
+                              <SiWechat size={18} color={payMethod.color} />
+                            ) : (
+                              <CreditCard size={18} color={payMethod.color} />
+                            )}
+                          </div>
+                          <div className='text-xs mt-1'>{payMethod.name}</div>
+                        </>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </Layout.Content>
-      </Layout>
+        </div>
+      )}
     </div>
   );
 };

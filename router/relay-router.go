@@ -11,6 +11,7 @@ import (
 func SetRelayRouter(router *gin.Engine) {
 	router.Use(middleware.CORS())
 	router.Use(middleware.DecompressRequestMiddleware())
+	router.Use(middleware.StatsMiddleware())
 	// https://platform.openai.com/docs/api-reference/introduction
 	modelsRouter := router.Group("/v1/models")
 	modelsRouter.Use(middleware.TokenAuth())
@@ -19,7 +20,7 @@ func SetRelayRouter(router *gin.Engine) {
 		modelsRouter.GET("/:model", controller.RetrieveModel)
 	}
 	playgroundRouter := router.Group("/pg")
-	playgroundRouter.Use(middleware.UserAuth())
+	playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
 	{
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 	}
@@ -62,6 +63,7 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.DELETE("/models/:model", controller.RelayNotImplemented)
 		httpRouter.POST("/moderations", controller.Relay)
 		httpRouter.POST("/rerank", controller.Relay)
+		httpRouter.POST("/models/*path", controller.Relay)
 	}
 
 	relayMjRouter := router.Group("/mj")
@@ -101,6 +103,8 @@ func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
 		relayMjRouter.POST("/submit/simple-change", controller.RelayMidjourney)
 		relayMjRouter.POST("/submit/describe", controller.RelayMidjourney)
 		relayMjRouter.POST("/submit/blend", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/edits", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/video", controller.RelayMidjourney)
 		relayMjRouter.POST("/notify", controller.RelayMidjourney)
 		relayMjRouter.GET("/task/:id/fetch", controller.RelayMidjourney)
 		relayMjRouter.GET("/task/:id/image-seed", controller.RelayMidjourney)

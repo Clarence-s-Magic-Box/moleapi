@@ -1,10 +1,28 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import React, { useEffect, useState } from 'react';
 import { API, copy, showError, showNotice, getLogo, getSystemName } from '../../helpers';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Button, Card, Form, Typography, Banner } from '@douyinfe/semi-ui';
 import { IconMail, IconLock, IconCopy } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
-import Background from '/example.png';
 
 const { Text, Title } = Typography;
 
@@ -79,24 +97,16 @@ const PasswordResetConfirm = () => {
   }
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 overflow-hidden">
-      {/* 背景图片容器 - 放大并保持居中 */}
-      <div
-        className="absolute inset-0 z-0 bg-cover bg-center scale-125 opacity-100"
-        style={{
-          backgroundImage: `url(${Background})`
-        }}
-      ></div>
-
-      {/* 半透明遮罩层 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-teal-500/30 via-blue-500/30 to-purple-500/30 backdrop-blur-sm z-0"></div>
-
-      <div className="w-full max-w-sm relative z-10">
+    <div className="relative overflow-hidden bg-gray-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      {/* 背景模糊晕染球 */}
+      <div className="blur-ball blur-ball-indigo" style={{ top: '-80px', right: '-80px', transform: 'none' }} />
+      <div className="blur-ball blur-ball-teal" style={{ top: '50%', left: '-120px' }} />
+      <div className="w-full max-w-sm mt-[60px]">
         <div className="flex flex-col items-center">
           <div className="w-full max-w-md">
             <div className="flex items-center justify-center mb-6 gap-2">
               <img src={logo} alt="Logo" className="h-10 rounded-full" />
-              <Title heading={3} className='!text-white'>{systemName}</Title>
+              <Title heading={3} className='!text-gray-800'>{systemName}</Title>
             </div>
 
             <Card className="shadow-xl border-0 !rounded-2xl overflow-hidden">
@@ -122,7 +132,6 @@ const PasswordResetConfirm = () => {
                     label={t('邮箱')}
                     name="email"
                     size="large"
-                    className="!rounded-md"
                     disabled={true}
                     prefix={<IconMail />}
                     placeholder={email ? '' : t('等待获取邮箱信息...')}
@@ -134,7 +143,6 @@ const PasswordResetConfirm = () => {
                       label={t('新密码')}
                       name="newPassword"
                       size="large"
-                      className="!rounded-md"
                       disabled={true}
                       prefix={<IconLock />}
                       suffix={

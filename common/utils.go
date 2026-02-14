@@ -3,8 +3,10 @@ package common
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	crand "crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -13,9 +15,11 @@ import (
 	"math/big"
 	"math/rand"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -249,13 +253,86 @@ func SaveTmpFile(filename string, data io.Reader) (string, error) {
 }
 
 // GetAudioDuration returns the duration of an audio file in seconds.
-func GetAudioDuration(ctx context.Context, filename string) (float64, error) {
+func GetAudioDuration(ctx context.Context, filename string, ext string) (float64, error) {
 	// ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {{input}}
 	c := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", filename)
 	output, err := c.Output()
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to get audio duration")
 	}
+	durationStr := string(bytes.TrimSpace(output))
+	if durationStr == "N/A" {
+		// Create a temporary output file name
+		tmpFp, err := os.CreateTemp("", "audio-*"+ext)
+		if err != nil {
+			return 0, errors.Wrap(err, "failed to create temporary file")
+		}
+		tmpName := tmpFp.Name()
+		// Close immediately so ffmpeg can open the file on Windows.
+		_ = tmpFp.Close()
+		defer os.Remove(tmpName)
 
-	return strconv.ParseFloat(string(bytes.TrimSpace(output)), 64)
+		// ffmpeg -y -i filename -vcodec copy -acodec copy <tmpName>
+		ffmpegCmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", filename, "-vcodec", "copy", "-acodec", "copy", tmpName)
+		if err := ffmpegCmd.Run(); err != nil {
+			return 0, errors.Wrap(err, "failed to run ffmpeg")
+		}
+
+		// Recalculate the duration of the new file
+		c = exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", tmpName)
+		output, err := c.Output()
+		if err != nil {
+			return 0, errors.Wrap(err, "failed to get audio duration after ffmpeg")
+		}
+		durationStr = string(bytes.TrimSpace(output))
+	}
+	return strconv.ParseFloat(durationStr, 64)
+}
+
+// BuildURL concatenates base and endpoint, returns the complete url string
+func BuildURL(base string, endpoint string) string {
+	u, err := url.Parse(base)
+	if err != nil {
+		return base + endpoint
+	}
+	end := endpoint
+	if end == "" {
+		end = "/"
+	}
+	ref, err := url.Parse(end)
+	if err != nil {
+		return base + endpoint
+	}
+	return u.ResolveReference(ref).String()
+}
+
+// GenerateSignature generates signature for LanTu payment
+func GenerateSignature(params map[string]string, key string) string {
+	// 1. Sort parameters by ASCII code
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// 2. Build string in URL key-value format
+	var builder strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			builder.WriteString("&")
+		}
+		builder.WriteString(k)
+		builder.WriteString("=")
+		builder.WriteString(params[k])
+	}
+
+	// 3. Append key
+	builder.WriteString("&key=")
+	builder.WriteString(key)
+
+	// 4. Calculate MD5
+	sign := md5.Sum([]byte(builder.String()))
+
+	// 5. Convert to uppercase
+	return strings.ToUpper(hex.EncodeToString(sign[:]))
 }

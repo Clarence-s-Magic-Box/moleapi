@@ -1,3 +1,22 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import React, { useEffect, useState, useRef } from 'react';
 import {
   Banner,
@@ -6,7 +25,6 @@ import {
   Form,
   Row,
   Spin,
-  Collapse,
   Modal,
 } from '@douyinfe/semi-ui';
 import {
@@ -27,6 +45,7 @@ export default function GeneralSettings(props) {
     'general_setting.docs_link': '',
     QuotaPerUnit: '',
     RetryTimes: '',
+    USDExchangeRate: '',
     DisplayInCurrencyEnabled: false,
     DisplayTokenStatEnabled: false,
     DefaultCollapseSidebar: false,
@@ -92,10 +111,6 @@ export default function GeneralSettings(props) {
   return (
     <>
       <Spin spinning={loading}>
-        <Banner
-          type='warning'
-          description={t('聊天链接功能已经弃用，请使用下方聊天设置功能')}
-        />
         <Form
           values={inputs}
           getFormApi={(formAPI) => (refForm.current = formAPI)}
@@ -132,6 +147,16 @@ export default function GeneralSettings(props) {
                   onChange={handleFieldChange('QuotaPerUnit')}
                   showClear
                   onClick={() => setShowQuotaWarning(true)}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Input
+                  field={'USDExchangeRate'}
+                  label={t('美元汇率（非充值汇率，仅用于定价页面换算）')}
+                  initValue={''}
+                  placeholder={t('美元汇率')}
+                  onChange={handleFieldChange('USDExchangeRate')}
+                  showClear
                 />
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>

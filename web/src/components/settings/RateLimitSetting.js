@@ -1,8 +1,26 @@
-import React, { useEffect, useState } from 'react';
-import { Card, Spin, Tabs } from '@douyinfe/semi-ui';
+/*
+Copyright (C) 2025 QuantumNous
 
-import { API, showError, showSuccess } from '../../helpers/index.js';
-import SettingsChats from '../../pages/Setting/Operation/SettingsChats.js';
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+import React, { useEffect, useState } from 'react';
+import { Card, Spin } from '@douyinfe/semi-ui';
+
+import { API, showError, toBoolean } from '../../helpers/index.js';
 import { useTranslation } from 'react-i18next';
 import RequestRateLimit from '../../pages/Setting/RateLimit/SettingsRequestRateLimit.js';
 
@@ -24,14 +42,14 @@ const RateLimitSetting = () => {
     if (success) {
       let newInputs = {};
       data.forEach((item) => {
-      if (item.key === 'ModelRequestRateLimitGroup') {
-        item.value = JSON.stringify(JSON.parse(item.value), null, 2);
-      }
+        if (item.key === 'ModelRequestRateLimitGroup') {
+          item.value = JSON.stringify(JSON.parse(item.value), null, 2);
+        }
 
-      if (item.key.endsWith('Enabled')) {
-        newInputs[item.key] = item.value === 'true' ? true : false;
-      } else {
-        newInputs[item.key] = item.value;
+        if (item.key.endsWith('Enabled')) {
+          newInputs[item.key] = toBoolean(item.value);
+        } else {
+          newInputs[item.key] = item.value;
         }
       });
 

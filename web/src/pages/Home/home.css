@@ -1,0 +1,102 @@
+/* 背景模糊晕染球样式 */
+.gradient-circle {
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--semi-color-primary), var(--semi-color-secondary), var(--semi-color-tertiary), var(--semi-color-info), var(--semi-color-warning), var(--semi-color-danger));
+  background-size: 200% 200%;
+  animation: rotateGradient 15s linear infinite;
+  z-index: 0;
+  top: 20%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.5;
+  filter: blur(40px);
+}
+
+/* 添加第二个晕染球 */
+.gradient-circle::before {
+  content: '';
+  position: absolute;
+  width: 125px;
+  height: 125px;
+  border-radius: 50%;
+  background: conic-gradient(from 180deg, var(--semi-color-warning), var(--semi-color-info), var(--semi-color-primary));
+  background-size: 200% 200%;
+  animation: rotateGradient 20s linear infinite reverse;
+  top: 150%;
+  left: 30%;
+  transform: translate(-50%, -50%);
+  opacity: 0.3;
+  filter: blur(35px);
+}
+
+@keyframes rotateGradient {
+  0% {
+    background-position: 0% 0%;
+  }
+
+  100% {
+    background-position: 200% 200%;
+  }
+}
+
+/* 功能特性卡片样式 */
+.feature-card {
+  transition: all 0.3s ease;
+  border: 1px solid var(--semi-color-border);
+}
+
+.feature-card:hover {
+  border-color: var(--semi-color-primary);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .gradient-circle {
+    width: 125px;
+    height: 125px;
+    top: 18%;
+    left: 50%;
+    filter: blur(25px);
+  }
+
+  .gradient-circle::before {
+    width: 75px;
+    height: 75px;
+    top: 120%;
+    left: 20%;
+    filter: blur(20px);
+  }
+}/* 
+打字机效果样式 */
+.typewriter-text {
+  display: inline-block;
+  font-weight: 500;
+}
+
+.typewriter-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  animation: blink 1s infinite;
+  color: var(--semi-color-primary);
+  font-weight: normal;
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+/* 确保打字机文本区域有固定高度，避免布局跳动 */
+.typewriter-container {
+  min-height: 1.5em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

@@ -1,3 +1,22 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import React, { useEffect, useState } from 'react';
 import { API, showError } from '../../helpers';
 import { marked } from 'marked';
@@ -38,80 +57,69 @@ const About = () => {
   };
 
   const customDescription = (
-    <div style={{ textAlign: 'center' }}>
-      <p>{t('可在设置页面设置关于内容，支持 HTML & Markdown')}</p>
-      {t('New API项目仓库地址：')}
-      <a
-        href='https://github.com/QuantumNous/new-api'
-        target="_blank"
-        rel="noopener noreferrer"
-        className="!text-semi-color-primary"
-      >
-        https://github.com/QuantumNous/new-api
-      </a>
+    <div style={{ textAlign: 'center', fontSize: '14px' }}>
+      <p>© 2025 MoleAPI. All rights reserved.</p>
       <p>
-        <a
-          href="https://github.com/QuantumNous/new-api"
+        基于 <a
+          href='https://github.com/Calcium-Ion/new-api'
           target="_blank"
           rel="noopener noreferrer"
           className="!text-semi-color-primary"
         >
-          NewAPI
-        </a> {t('© {{currentYear}}', { currentYear })} <a
-          href="https://github.com/QuantumNous"
+          New-API
+        </a> © 2025 CalciumIon | 源自 <a
+          href='https://github.com/songquanpeng/one-api'
           target="_blank"
           rel="noopener noreferrer"
           className="!text-semi-color-primary"
         >
-          QuantumNous
-        </a> {t('| 基于')} <a
-          href="https://github.com/songquanpeng/one-api/releases/tag/v0.5.4"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="!text-semi-color-primary"
-        >
-          One API v0.5.4
-        </a> © 2023 <a
-          href="https://github.com/songquanpeng"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="!text-semi-color-primary"
-        >
-          JustSong
-        </a>
+          One API
+        </a> v0.5.4 © 2023 JustSong
       </p>
       <p>
-        {t('本项目根据')}
-        <a
-          href="https://github.com/songquanpeng/one-api/blob/v0.5.4/LICENSE"
+        本项目根据 <a
+          href='https://opensource.org/license/mit'
           target="_blank"
           rel="noopener noreferrer"
           className="!text-semi-color-primary"
         >
-          {t('MIT许可证')}
-        </a>
-        {t('授权，需在遵守')}
-        <a
-          href="https://github.com/QuantumNous/new-api/blob/main/LICENSE"
+          MIT许可证
+        </a> 授权，在遵守 <a
+          href='https://github.com/Calcium-Ion/new-api/blob/main/LICENSE'
           target="_blank"
           rel="noopener noreferrer"
           className="!text-semi-color-primary"
         >
-          {t('Apache-2.0协议')}
-        </a>
-        {t('的前提下使用。')}
+          Apache-2.0协议
+        </a> 的前提下使用。
+      </p>
+      <p>
+        根据<a
+          href='https://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm'
+          target="_blank"
+          rel="noopener noreferrer"
+          className="!text-semi-color-primary"
+        >
+          《生成式人工智能服务管理暂行办法》
+        </a>的要求，本站不向中国大陆公众提供未经备案的生成式人工智能服务。
+      </p>
+      <p>
+        本站不提供任何形式的人工智能服务，仅提供 API 转发接口，请勿用于任何违法违规用途，否则将承担相应的法律责任。
+      </p>
+      <p>
+        使用本站任何服务时，请务必遵守相应大模型提供商的条款和协议，并在使用时遵守当地法律法规。
       </p>
     </div>
   );
 
   return (
-    <>
+    <div className="mt-[60px] px-2">
       {aboutLoaded && about === '' ? (
         <div className="flex justify-center items-center h-screen p-8">
           <Empty
             image={<IllustrationConstruction style={{ width: 150, height: 150 }} />}
             darkModeImage={<IllustrationConstructionDark style={{ width: 150, height: 150 }} />}
-            description={t('管理员暂时未设置任何关于内容')}
+            description={t('关于本站')}
             style={emptyStyle}
           >
             {customDescription}
@@ -126,13 +134,13 @@ const About = () => {
             />
           ) : (
             <div
-              style={{ fontSize: 'larger' }}
+              style={{ fontSize: '16px' }}
               dangerouslySetInnerHTML={{ __html: about }}
             ></div>
           )}
         </>
       )}
-    </>
+    </div>
   );
 };
 

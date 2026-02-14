@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"log"
+	"math"
 	"net/url"
 	"one-api/common"
 	"one-api/model"
@@ -82,7 +83,7 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 	if req.Amount < getMinTopup() {
-		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不小于 %d", getMinTopup())})
 		return
 	}
 
@@ -134,9 +135,17 @@ func RequestEpay(c *gin.Context) {
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
+	// 计算加赠额度
+	extraRatio := common.CalculateExtraQuotaRatio(float64(amount))
+	extraQuota := int(math.Ceil(float64(amount) * extraRatio * common.QuotaPerUnit))
+
+	log.Printf("充值计算 - 用户ID: %d, 原始金额: %v, 支付金额: %f, 加赠比例: %f, 额外赠送: %v",
+		id, amount, payMoney, extraRatio, extraQuota)
+
 	topUp := &model.TopUp{
 		UserId:     id,
-		Amount:     amount,
+		Amount:     int64(amount),
+		ExtraQuota: extraQuota,
 		Money:      payMoney,
 		TradeNo:    tradeNo,
 		CreateTime: time.Now().Unix(),
@@ -264,4 +273,8 @@ func RequestAmount(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 2, 64)})
+}
+
+func GenerateTradeNo(userId int) string {
+	return fmt.Sprintf("USR%dNO%s", userId, time.Now().Format("20060102150405"))
 }

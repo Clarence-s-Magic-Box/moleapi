@@ -1,8 +1,29 @@
-import { Toast } from '@douyinfe/semi-ui';
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+import { Toast, Pagination } from '@douyinfe/semi-ui';
 import { toastConstants } from '../constants';
 import React from 'react';
 import { toast } from 'react-toastify';
 import { THINK_TAG_REGEX, MESSAGE_ROLES } from '../constants/playground.constants';
+import { TABLE_COMPACT_MODES_KEY } from '../constants';
+import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile.js';
 
 const HTMLToastContent = ({ htmlContent }) => {
   return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
@@ -66,9 +87,7 @@ export async function copy(text) {
   return okay;
 }
 
-export function isMobile() {
-  return window.innerWidth <= 600;
-}
+// isMobile 函数已移除，请改用 useIsMobile Hook
 
 let showErrorOptions = { autoClose: toastConstants.ERROR_TIMEOUT };
 let showWarningOptions = { autoClose: toastConstants.WARNING_TIMEOUT };
@@ -76,7 +95,8 @@ let showSuccessOptions = { autoClose: toastConstants.SUCCESS_TIMEOUT };
 let showInfoOptions = { autoClose: toastConstants.INFO_TIMEOUT };
 let showNoticeOptions = { autoClose: false };
 
-if (isMobile()) {
+const isMobileScreen = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`).matches;
+if (isMobileScreen) {
   showErrorOptions.position = 'top-center';
   // showErrorOptions.transition = 'flip';
 
@@ -445,4 +465,158 @@ export const getLastAssistantMessage = (messages) => {
     }
   }
   return null;
+};
+
+// 计算相对时间（几天前、几小时前等）
+export const getRelativeTime = (publishDate) => {
+  if (!publishDate) return '';
+
+  const now = new Date();
+  const pubDate = new Date(publishDate);
+
+  // 如果日期无效，返回原始字符串
+  if (isNaN(pubDate.getTime())) return publishDate;
+
+  const diffMs = now.getTime() - pubDate.getTime();
+  const diffSeconds = Math.floor(diffMs / 1000);
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  const diffWeeks = Math.floor(diffDays / 7);
+  const diffMonths = Math.floor(diffDays / 30);
+  const diffYears = Math.floor(diffDays / 365);
+
+  // 如果是未来时间，显示具体日期
+  if (diffMs < 0) {
+    return formatDateString(pubDate);
+  }
+
+  // 根据时间差返回相应的描述
+  if (diffSeconds < 60) {
+    return '刚刚';
+  } else if (diffMinutes < 60) {
+    return `${diffMinutes} 分钟前`;
+  } else if (diffHours < 24) {
+    return `${diffHours} 小时前`;
+  } else if (diffDays < 7) {
+    return `${diffDays} 天前`;
+  } else if (diffWeeks < 4) {
+    return `${diffWeeks} 周前`;
+  } else if (diffMonths < 12) {
+    return `${diffMonths} 个月前`;
+  } else if (diffYears < 2) {
+    return '1 年前';
+  } else {
+    // 超过2年显示具体日期
+    return formatDateString(pubDate);
+  }
+};
+
+// 格式化日期字符串
+export const formatDateString = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// 格式化日期时间字符串（包含时间）
+export const formatDateTimeString = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
+};
+
+function readTableCompactModes() {
+  try {
+    const json = localStorage.getItem(TABLE_COMPACT_MODES_KEY);
+    return json ? JSON.parse(json) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeTableCompactModes(modes) {
+  try {
+    localStorage.setItem(TABLE_COMPACT_MODES_KEY, JSON.stringify(modes));
+  } catch {
+    // ignore
+  }
+}
+
+export function getTableCompactMode(tableKey = 'global') {
+  const modes = readTableCompactModes();
+  return !!modes[tableKey];
+}
+
+export function setTableCompactMode(compact, tableKey = 'global') {
+  const modes = readTableCompactModes();
+  modes[tableKey] = compact;
+  writeTableCompactModes(modes);
+}
+
+// -------------------------------
+// Select 组件统一过滤逻辑
+// 使用方式： <Select filter={selectFilter} ... />
+// 统一的 Select 搜索过滤逻辑 -- 支持同时匹配 option.value 与 option.label
+export const selectFilter = (input, option) => {
+  if (!input) return true;
+
+  const keyword = input.trim().toLowerCase();
+  const valueText = (option?.value ?? '').toString().toLowerCase();
+  const labelText = (option?.label ?? '').toString().toLowerCase();
+
+  return valueText.includes(keyword) || labelText.includes(keyword);
+};
+
+// -------------------------------
+// CardPro 分页配置函数
+// 用于创建 CardPro 的 paginationArea 配置
+export const createCardProPagination = ({
+  currentPage,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+  isMobile = false,
+  pageSizeOpts = [10, 20, 50, 100],
+  showSizeChanger = true,
+  t = (key) => key,
+}) => {
+  if (!total || total <= 0) return null;
+
+  const start = (currentPage - 1) * pageSize + 1;
+  const end = Math.min(currentPage * pageSize, total);
+  const totalText = `${t('显示第')} ${start} ${t('条 - 第')} ${end} ${t('条，共')} ${total} ${t('条')}`;
+
+  return (
+    <>
+      {/* 桌面端左侧总数信息 */}
+      {!isMobile && (
+        <span
+          className="text-sm select-none"
+          style={{ color: 'var(--semi-color-text-2)' }}
+        >
+          {totalText}
+        </span>
+      )}
+
+      {/* 右侧分页控件 */}
+      <Pagination
+        currentPage={currentPage}
+        pageSize={pageSize}
+        total={total}
+        pageSizeOpts={pageSizeOpts}
+        showSizeChanger={showSizeChanger}
+        onPageSizeChange={onPageSizeChange}
+        onPageChange={onPageChange}
+        size={isMobile ? "small" : "default"}
+        showQuickJumper={isMobile}
+        showTotal
+      />
+    </>
+  );
 };

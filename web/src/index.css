@@ -14,21 +14,20 @@
 }
 
 /* ==================== 全局基础样式 ==================== */
-body {
-  margin: 0;
-  padding-top: 0;
-  font-family:
-    Lato, 'Helvetica Neue', Arial, Helvetica, 'Microsoft YaHei', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  scrollbar-width: none;
-  color: var(--semi-color-text-0) !important;
-  background-color: var(--semi-color-bg-0) !important;
-  height: 100vh;
+:root {
+  --sidebar-width: 180px;
+  --sidebar-width-collapsed: 60px;
+  --sidebar-current-width: var(--sidebar-width);
 }
 
-body::-webkit-scrollbar {
-  display: none;
+body.sidebar-collapsed {
+  --sidebar-current-width: var(--sidebar-width-collapsed);
+}
+
+body {
+  font-family: Lato, 'Helvetica Neue', Arial, Helvetica, 'Microsoft YaHei', sans-serif;
+  color: var(--semi-color-text-0);
+  background-color: var(--semi-color-bg-0);
 }
 
 code {
@@ -36,49 +35,45 @@ code {
     source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
 
-#root {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 /* ==================== 布局相关样式 ==================== */
+.semi-layout::-webkit-scrollbar,
 .semi-layout-content::-webkit-scrollbar,
 .semi-sider::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  display: none;
+  width: 0;
+  height: 0;
 }
 
-.semi-layout-content::-webkit-scrollbar-thumb,
-.semi-sider::-webkit-scrollbar-thumb {
-  background: var(--semi-color-tertiary-light-default);
-  border-radius: 3px;
-}
-
-.semi-layout-content::-webkit-scrollbar-thumb:hover,
-.semi-sider::-webkit-scrollbar-thumb:hover {
-  background: var(--semi-color-tertiary);
-}
-
-.semi-layout-content::-webkit-scrollbar-track,
-.semi-sider::-webkit-scrollbar-track {
-  background: transparent;
+.semi-layout,
+.semi-layout-content,
+.semi-sider {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* ==================== 导航和侧边栏样式 ==================== */
 /* 导航项样式 */
+.semi-input-textarea-wrapper,
 .semi-navigation-sub-title,
 .semi-chat-inputBox-sendButton,
 .semi-page-item,
 .semi-navigation-item,
 .semi-tag-closable,
+.semi-input-wrapper,
+.semi-tabs-tab-button,
+.semi-select,
+.semi-button,
 .semi-datepicker-range-input {
-  border-radius: 9999px !important;
+  border-radius: 10px !important;
 }
 
 .semi-navigation-item {
   margin-bottom: 4px !important;
+  padding: 4px 12px !important;
+}
+
+.semi-navigation-sub-title {
+  padding: 0 !important;
 }
 
 .semi-navigation-item-icon {
@@ -90,6 +85,7 @@ code {
   margin-right: 0;
 }
 
+.semi-navigation-item,
 .semi-navigation-sub-title {
   height: 100% !important;
 }
@@ -322,6 +318,24 @@ code {
   font-size: 1.1em;
 }
 
+/* 卡片内容容器通用样式 */
+.card-content-container {
+  position: relative;
+}
+
+.card-content-fade-indicator {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  background: linear-gradient(transparent, var(--semi-color-bg-1));
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
 /* ==================== 调试面板特定样式 ==================== */
 .debug-panel .semi-tabs {
   height: 100% !important;
@@ -377,20 +391,26 @@ code {
   background: transparent;
 }
 
-/* 隐藏模型设置区域的滚动条 */
-.model-settings-scroll::-webkit-scrollbar,
-.thinking-content-scroll::-webkit-scrollbar,
-.custom-request-textarea .semi-input::-webkit-scrollbar,
-.custom-request-textarea textarea::-webkit-scrollbar {
-  display: none;
-}
-
+/* 隐藏卡片内容区域的滚动条 */
+.model-test-scroll,
+.card-content-scroll,
 .model-settings-scroll,
 .thinking-content-scroll,
 .custom-request-textarea .semi-input,
-.custom-request-textarea textarea {
+.custom-request-textarea textarea,
+.notice-content-scroll {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+.model-test-scroll::-webkit-scrollbar,
+.card-content-scroll::-webkit-scrollbar,
+.model-settings-scroll::-webkit-scrollbar,
+.thinking-content-scroll::-webkit-scrollbar,
+.custom-request-textarea .semi-input::-webkit-scrollbar,
+.custom-request-textarea textarea::-webkit-scrollbar,
+.notice-content-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 /* 图片列表滚动条样式 */
@@ -412,58 +432,343 @@ code {
   background: transparent;
 }
 
-/* ==================== 响应式/移动端样式 ==================== */
-@media only screen and (max-width: 767px) {
-  #root>section>header>section>div>div>div>div.semi-navigation-footer>div>a>li {
-    padding: 0 0;
+/* ==================== 同步倍率 - 渠道选择器 ==================== */
+
+.components-transfer-source-item,
+.components-transfer-selected-item {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+}
+
+.semi-transfer-left-list,
+.semi-transfer-right-list {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.semi-transfer-left-list::-webkit-scrollbar,
+.semi-transfer-right-list::-webkit-scrollbar {
+  display: none;
+}
+
+.components-transfer-source-item .semi-checkbox,
+.components-transfer-selected-item .semi-checkbox {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.components-transfer-source-item .semi-avatar,
+.components-transfer-selected-item .semi-avatar {
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.components-transfer-source-item .info,
+.components-transfer-selected-item .info {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.components-transfer-source-item .name,
+.components-transfer-selected-item .name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.components-transfer-source-item .email,
+.components-transfer-selected-item .email {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+  display: flex;
+  align-items: center;
+}
+
+.components-transfer-selected-item .semi-icon-close {
+  margin-left: 8px;
+  cursor: pointer;
+  color: var(--semi-color-text-2);
+}
+
+.components-transfer-selected-item .semi-icon-close:hover {
+  color: var(--semi-color-text-0);
+}
+
+/* ==================== 未读通知闪光效果 ==================== */
+@keyframes sweep-shine {
+  0% {
+    background-position: 200% 0;
   }
 
-  #root>section>header>section>div>div>div>div.semi-navigation-header-list-outer>div.semi-navigation-list-wrapper>ul>div>a>li {
-    padding: 0 5px;
+  100% {
+    background-position: -200% 0;
   }
+}
 
-  #root>section>header>section>div>div>div>div.semi-navigation-footer>div:nth-child(1)>a>li {
-    padding: 0 5px;
-  }
+.shine-text {
+  color: transparent;
+  background-image: linear-gradient(-225deg, 
+    rgba(64, 64, 64, 0.6) 0%, 
+    rgba(59, 130, 246, 0.9) 20%, 
+    rgba(37, 99, 235, 1) 35%, 
+    rgba(99, 102, 241, 1) 50%, 
+    rgba(139, 92, 246, 1) 65%, 
+    rgba(59, 130, 246, 0.9) 80%, 
+    rgba(64, 64, 64, 0.6) 100%);
+  background-size: 200% 120%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: masked-animation 30s infinite linear;
+}
 
-  .semi-navigation-horizontal .semi-navigation-header {
-    margin-right: 0;
-  }
+.dark .shine-text {
+  color: transparent;
+  background-image: linear-gradient(-225deg, 
+    rgba(156, 163, 175, 0.7) 0%, 
+    rgba(96, 165, 250, 0.9) 20%, 
+    rgba(59, 130, 246, 1) 35%, 
+    rgba(129, 140, 248, 1) 50%, 
+    rgba(168, 85, 247, 1) 65%, 
+    rgba(96, 165, 250, 0.9) 80%, 
+    rgba(156, 163, 175, 0.7) 100%);
+  background-size: 200% 120%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: masked-animation 30s infinite linear;
+}
 
-  /* 确保移动端内容可滚动 */
-  .semi-layout-content {
-    -webkit-overflow-scrolling: touch !important;
-    overscroll-behavior-y: auto !important;
-  }
+/* ==================== ScrollList 定制样式 ==================== */
+.semi-scrolllist,
+.semi-scrolllist * {
+  -ms-overflow-style: none;
+  /* IE, Edge */
+  scrollbar-width: none;
+  /* Firefox */
+  background: transparent !important;
+}
 
-  /* 修复移动端下拉刷新 */
-  body {
-    overflow: visible !important;
-    overscroll-behavior-y: auto !important;
-    position: static !important;
-    height: 100% !important;
-  }
+.semi-scrolllist::-webkit-scrollbar,
+.semi-scrolllist *::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
 
-  /* 确保内容区域在移动端可以正常滚动 */
-  #root {
-    overflow: visible !important;
-    height: 100% !important;
-  }
+.semi-scrolllist-body {
+  padding: 1px !important;
+}
 
-  /* 移动端表格样式调整 */
-  .semi-table-tbody,
-  .semi-table-row,
-  .semi-table-row-cell {
-    display: block !important;
-    width: auto !important;
-    padding: 2px !important;
-  }
+.semi-scrolllist-list-outer {
+  padding-right: 0 !important;
+}
 
-  .semi-table-row-cell {
-    border-bottom: 0 !important;
-  }
+/* ==================== Banner 背景模糊球 ==================== */
+.blur-ball {
+  position: absolute;
+  width: 360px;
+  height: 360px;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: -1;
+}
 
-  .semi-table-tbody>.semi-table-row {
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+.blur-ball-indigo {
+  background: #6366f1;
+  /* indigo-500 */
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.5;
+}
+
+.blur-ball-teal {
+  background: #14b8a6;
+  /* teal-400 */
+  top: 200px;
+  left: 30%;
+  opacity: 0.4;
+}
+
+/* 浅色主题下让模糊球更柔和 */
+html:not(.dark) .blur-ball-indigo {
+  opacity: 0.25;
+}
+
+html:not(.dark) .blur-ball-teal {
+  opacity: 0.2;
+}
+
+/* ==================== 表格卡片滚动设置 ==================== */
+.table-scroll-card {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 110px);
+  max-height: calc(100vh - 110px);
+}
+
+.table-scroll-card .semi-card-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.table-scroll-card .semi-card-body::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .table-scroll-card {
+    height: calc(100vh - 77px);
+    max-height: calc(100vh - 77px);
   }
+}
+
+/* ==================== 品牌名渐变文字样式 ==================== */
+.sidebar-title {
+  color: transparent;
+  font-weight: bold;
+  background-image: linear-gradient(-225deg, 
+    rgba(30, 30, 30, 0.8) 0%, 
+    rgba(22, 73, 238, 0.8) 15%, 
+    #1649ee 25%, 
+    #cd97e6 48%, 
+    #ee6552 60%, 
+    #7419c7 75%, 
+    rgba(116, 25, 199, 0.8) 85%, 
+    rgba(30, 30, 30, 0.8) 100%);  -webkit-background-clip: text;
+  background-clip: text;
+  font-size: 1.5rem;
+  background-size: 200% 120%;
+  animation: masked-animation 10s infinite linear;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  line-height: 1;
+}
+
+@keyframes masked-animation {
+  0% {
+    background-position: 300% 0;
+  }
+  100% {
+    background-position: -300% 0;
+  }
+}
+
+.sidebar-subtitle {
+  color: #666;
+  font-weight: 400;
+  font-size: 0.7rem;
+  margin-left: 0.2rem;
+}
+
+/* ==================== 顶部导航菜单样式 ==================== */
+/* 自定义顶部导航按钮样式 */
+.nav-link-item {
+  border-radius: 12px !important;
+  margin: 0 1px !important;
+  padding: 6px 12px !important;
+  transition: all 0.3s ease !important;
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  text-decoration: none !important;
+  color: var(--semi-color-text-0) !important;
+}
+
+/* 悬停效果 */
+.nav-link-item:hover {
+  color: var(--semi-color-primary) !important;
+  transform: translateY(-1px) !important;
+}
+
+.nav-link-item:hover::before {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  right: 2px;
+  height: calc(100% - 4px);
+  background-color: var(--semi-color-primary-light-default);
+  border-radius: 10px;
+  z-index: -1;
+  transition: all 0.3s ease;
+  opacity: 1;
+}
+
+.nav-link-item::before {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  right: 2px;
+  height: calc(100% - 4px);
+  background-color: var(--semi-color-primary-light-default);
+  border-radius: 10px;
+  z-index: -1;
+  transition: all 0.3s ease;
+  opacity: 0;
+}
+
+/* 图标样式 */
+.nav-link-icon {
+  font-size: 16px !important;
+  transition: all 0.3s ease !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.nav-link-item:hover .nav-link-icon {
+  transform: scale(1.1) !important;
+}
+
+/* 文字样式 */
+.nav-link-text {
+  transition: all 0.3s ease !important;
+  position: relative !important;
+  z-index: 1 !important;
+  line-height: 1 !important;
+}
+
+/* 移动端样式优化 */
+.nav-link-item-mobile {
+  border-radius: 8px !important;
+  margin: 0 !important;
+  padding: 10px 16px !important;
+  width: 100% !important;
+  transition: all 0.3s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+  color: var(--semi-color-text-0) !important;
+}
+
+.nav-link-item-mobile:hover {
+  background-color: var(--semi-color-fill-1) !important;
+  color: var(--semi-color-primary) !important;
+}
+
+/* 暗色主题适配 */
+.dark .nav-link-item:hover::before {
+  background-color: rgba(var(--semi-blue-5), 0.2) !important;
+}
+
+.dark .nav-link-item-mobile:hover {
+  background-color: rgba(var(--semi-blue-5), 0.2) !important;
 }

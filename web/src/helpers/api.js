@@ -1,3 +1,22 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import { getUserIdFromLocalStorage, showError, formatMessageForAPI, isValidMessage } from './utils';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
@@ -12,6 +31,36 @@ export let API = axios.create({
   },
 });
 
+function patchAPIInstance(instance) {
+  const originalGet = instance.get.bind(instance);
+  const inFlightGetRequests = new Map();
+
+  const genKey = (url, config = {}) => {
+    const params = config.params ? JSON.stringify(config.params) : '{}';
+    return `${url}?${params}`;
+  };
+
+  instance.get = (url, config = {}) => {
+    if (config?.disableDuplicate) {
+      return originalGet(url, config);
+    }
+
+    const key = genKey(url, config);
+    if (inFlightGetRequests.has(key)) {
+      return inFlightGetRequests.get(key);
+    }
+
+    const reqPromise = originalGet(url, config).finally(() => {
+      inFlightGetRequests.delete(key);
+    });
+
+    inFlightGetRequests.set(key, reqPromise);
+    return reqPromise;
+  };
+}
+
+patchAPIInstance(API);
+
 export function updateAPI() {
   API = axios.create({
     baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
@@ -22,12 +71,19 @@ export function updateAPI() {
       'Cache-Control': 'no-store',
     },
   });
+
+  patchAPIInstance(API);
 }
 
 API.interceptors.response.use(
   (response) => response,
   (error) => {
+    // 如果请求配置中显式要求跳过全局错误处理，则不弹出默认错误提示
+    if (error.config && error.config.skipErrorHandler) {
+      return Promise.reject(error);
+    }
     showError(error);
+    return Promise.reject(error);
   },
 );
 
@@ -50,7 +106,9 @@ export const buildApiPayload = (messages, systemPrompt, inputs, parameterEnabled
 
   const payload = {
     model: inputs.model,
+    group: inputs.group,
     messages: processedMessages,
+    group: inputs.group,
     stream: inputs.stream,
   };
 

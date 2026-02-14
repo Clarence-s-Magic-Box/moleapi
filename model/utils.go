@@ -2,11 +2,12 @@ package model
 
 import (
 	"errors"
-	"github.com/bytedance/gopkg/util/gopool"
-	"gorm.io/gorm"
 	"one-api/common"
 	"sync"
 	"time"
+
+	"github.com/bytedance/gopkg/util/gopool"
+	"gorm.io/gorm"
 )
 
 const (
@@ -48,7 +49,23 @@ func addNewRecord(type_ int, id int, value int) {
 }
 
 func batchUpdate() {
-	common.SysLog("batch update started")
+	// check if there's any data to update
+	hasData := false
+	for i := 0; i < BatchUpdateTypeCount; i++ {
+		batchUpdateLocks[i].Lock()
+		if len(batchUpdateStores[i]) > 0 {
+			hasData = true
+			batchUpdateLocks[i].Unlock()
+			break
+		}
+		batchUpdateLocks[i].Unlock()
+	}
+
+	if !hasData {
+		return
+	}
+
+	// common.SysLog("batch update started")
 	for i := 0; i < BatchUpdateTypeCount; i++ {
 		batchUpdateLocks[i].Lock()
 		store := batchUpdateStores[i]
@@ -76,7 +93,7 @@ func batchUpdate() {
 			}
 		}
 	}
-	common.SysLog("batch update finished")
+	// common.SysLog("batch update finished")
 }
 
 func RecordExist(err error) (bool, error) {
