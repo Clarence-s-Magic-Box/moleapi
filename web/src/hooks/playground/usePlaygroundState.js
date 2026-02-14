@@ -18,28 +18,65 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { DEFAULT_MESSAGES, DEFAULT_CONFIG, DEBUG_TABS, MESSAGE_STATUS } from '../../constants/playground.constants';
-import { loadConfig, saveConfig, loadMessages, saveMessages } from '../../components/playground/configStorage';
+import { useTranslation } from 'react-i18next';
+import {
+  DEFAULT_MESSAGES,
+  getDefaultMessages,
+  DEFAULT_CONFIG,
+  DEBUG_TABS,
+  MESSAGE_STATUS,
+} from '../../constants/playground.constants';
+import {
+  loadConfig,
+  saveConfig,
+  loadMessages,
+  saveMessages,
+} from '../../components/playground/configStorage';
 import { processIncompleteThinkTags } from '../../helpers';
 
 export const usePlaygroundState = () => {
+  const { t } = useTranslation();
+
   // 使用惰性初始化，确保只在组件首次挂载时加载配置和消息
   const [savedConfig] = useState(() => loadConfig());
-  const [initialMessages] = useState(() => loadMessages() || DEFAULT_MESSAGES);
+  const [initialMessages] = useState(() => {
+    const loaded = loadMessages();
+    // 检查是否是旧的中文默认消息，如果是则清除
+    if (
+      loaded &&
+      loaded.length === 2 &&
+      loaded[0].id === '2' &&
+      loaded[1].id === '3'
+    ) {
+      const hasOldChinese =
+        loaded[0].content === '你好' ||
+        loaded[1].content === '你好，请问有什么可以帮助您的吗？' ||
+        loaded[1].content === '你好！很高兴见到你。有什么我可以帮助你的吗？';
+
+      if (hasOldChinese) {
+        // 清除旧的默认消息
+        localStorage.removeItem('playground_messages');
+        return null;
+      }
+    }
+    return loaded;
+  });
 
   // 基础配置状态
-  const [inputs, setInputs] = useState(savedConfig.inputs || DEFAULT_CONFIG.inputs);
+  const [inputs, setInputs] = useState(
+    savedConfig.inputs || DEFAULT_CONFIG.inputs,
+  );
   const [parameterEnabled, setParameterEnabled] = useState(
-    savedConfig.parameterEnabled || DEFAULT_CONFIG.parameterEnabled
+    savedConfig.parameterEnabled || DEFAULT_CONFIG.parameterEnabled,
   );
   const [showDebugPanel, setShowDebugPanel] = useState(
-    savedConfig.showDebugPanel || DEFAULT_CONFIG.showDebugPanel
+    savedConfig.showDebugPanel || DEFAULT_CONFIG.showDebugPanel,
   );
   const [customRequestMode, setCustomRequestMode] = useState(
-    savedConfig.customRequestMode || DEFAULT_CONFIG.customRequestMode
+    savedConfig.customRequestMode || DEFAULT_CONFIG.customRequestMode,
   );
   const [customRequestBody, setCustomRequestBody] = useState(
-    savedConfig.customRequestBody || DEFAULT_CONFIG.customRequestBody
+    savedConfig.customRequestBody || DEFAULT_CONFIG.customRequestBody,
   );
 
   // UI状态
@@ -48,8 +85,18 @@ export const usePlaygroundState = () => {
   const [groups, setGroups] = useState([]);
   const [status, setStatus] = useState({});
 
-  // 消息相关状态 - 使用加载的消息初始化
-  const [message, setMessage] = useState(initialMessages);
+  // 消息相关状态 - 使用加载的消息或默认消息初始化
+  const [message, setMessage] = useState(
+    () => initialMessages || getDefaultMessages(t),
+  );
+
+  // 当语言改变时，如果是默认消息则更新
+  useEffect(() => {
+    // 只在没有保存的消息时才更新默认消息
+    if (!initialMessages) {
+      setMessage(getDefaultMessages(t));
+    }
+  }, [t, initialMessages]); // 当语言改变时
 
   // 调试状态
   const [debugData, setDebugData] = useState({
@@ -57,7 +104,7 @@ export const usePlaygroundState = () => {
     response: null,
     timestamp: null,
     previewRequest: null,
-    previewTimestamp: null
+    previewTimestamp: null,
   });
   const [activeDebugTab, setActiveDebugTab] = useState(DEBUG_TABS.PREVIEW);
   const [previewPayload, setPreviewPayload] = useState(null);
@@ -74,21 +121,24 @@ export const usePlaygroundState = () => {
 
   // 配置更新函数
   const handleInputChange = useCallback((name, value) => {
-    setInputs(prev => ({ ...prev, [name]: value }));
+    setInputs((prev) => ({ ...prev, [name]: value }));
   }, []);
 
   const handleParameterToggle = useCallback((paramName) => {
-    setParameterEnabled(prev => ({
+    setParameterEnabled((prev) => ({
       ...prev,
-      [paramName]: !prev[paramName]
+      [paramName]: !prev[paramName],
     }));
   }, []);
 
   // 消息保存函数 - 改为立即保存，可以接受参数
-  const saveMessagesImmediately = useCallback((messagesToSave) => {
-    // 如果提供了参数，使用参数；否则使用当前状态
-    saveMessages(messagesToSave || message);
-  }, [message]);
+  const saveMessagesImmediately = useCallback(
+    (messagesToSave) => {
+      // 如果提供了参数，使用参数；否则使用当前状态
+      saveMessages(messagesToSave || message);
+    },
+    [message],
+  );
 
   // 配置保存
   const debouncedSaveConfig = useCallback(() => {
@@ -106,15 +156,24 @@ export const usePlaygroundState = () => {
       };
       saveConfig(configToSave);
     }, 1000);
-  }, [inputs, parameterEnabled, showDebugPanel, customRequestMode, customRequestBody]);
+  }, [
+    inputs,
+    parameterEnabled,
+    showDebugPanel,
+    customRequestMode,
+    customRequestBody,
+  ]);
 
   // 配置导入/重置
   const handleConfigImport = useCallback((importedConfig) => {
     if (importedConfig.inputs) {
-      setInputs(prev => ({ ...prev, ...importedConfig.inputs }));
+      setInputs((prev) => ({ ...prev, ...importedConfig.inputs }));
     }
     if (importedConfig.parameterEnabled) {
-      setParameterEnabled(prev => ({ ...prev, ...importedConfig.parameterEnabled }));
+      setParameterEnabled((prev) => ({
+        ...prev,
+        ...importedConfig.parameterEnabled,
+      }));
     }
     if (typeof importedConfig.showDebugPanel === 'boolean') {
       setShowDebugPanel(importedConfig.showDebugPanel);
@@ -144,7 +203,7 @@ export const usePlaygroundState = () => {
     if (resetMessages) {
       setMessage([]);
       setTimeout(() => {
-        setMessage(DEFAULT_MESSAGES);
+        setMessage(getDefaultMessages(t));
       }, 0);
     }
   }, []);
@@ -163,10 +222,13 @@ export const usePlaygroundState = () => {
     if (!Array.isArray(message) || message.length === 0) return;
 
     const lastMsg = message[message.length - 1];
-    if (lastMsg.status === MESSAGE_STATUS.LOADING || lastMsg.status === MESSAGE_STATUS.INCOMPLETE) {
+    if (
+      lastMsg.status === MESSAGE_STATUS.LOADING ||
+      lastMsg.status === MESSAGE_STATUS.INCOMPLETE
+    ) {
       const processed = processIncompleteThinkTags(
         lastMsg.content || '',
-        lastMsg.reasoningContent || ''
+        lastMsg.reasoningContent || '',
       );
 
       const fixedLastMsg = {
@@ -241,4 +303,4 @@ export const usePlaygroundState = () => {
     handleConfigImport,
     handleConfigReset,
   };
-}; 
+};

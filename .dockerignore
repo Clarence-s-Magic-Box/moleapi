@@ -6,3 +6,5 @@
 Makefile
 docs
 .eslintcache
+.gocache
+/web/node_modules

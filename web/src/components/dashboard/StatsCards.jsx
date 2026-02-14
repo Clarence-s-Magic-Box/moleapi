@@ -18,19 +18,23 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Card, Avatar, Skeleton } from '@douyinfe/semi-ui';
+import { Card, Avatar, Skeleton, Tag } from '@douyinfe/semi-ui';
 import { VChart } from '@visactor/react-vchart';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 const StatsCards = ({
   groupedStatsData,
   loading,
   getTrendSpec,
   CARD_PROPS,
-  CHART_CONFIG
+  CHART_CONFIG,
 }) => {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
   return (
-    <div className="mb-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className='mb-4'>
+      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
         {groupedStatsData.map((group, idx) => (
           <Card
             key={idx}
@@ -38,24 +42,24 @@ const StatsCards = ({
             className={`${group.color} border-0 !rounded-2xl w-full`}
             title={group.title}
           >
-            <div className="space-y-4">
+            <div className='space-y-4'>
               {group.items.map((item, itemIdx) => (
                 <div
                   key={itemIdx}
-                  className="flex items-center justify-between cursor-pointer"
+                  className='flex items-center justify-between cursor-pointer'
                   onClick={item.onClick}
                 >
-                  <div className="flex items-center">
+                  <div className='flex items-center'>
                     <Avatar
-                      className="mr-3"
-                      size="small"
+                      className='mr-3'
+                      size='small'
                       color={item.avatarColor}
                     >
                       {item.icon}
                     </Avatar>
                     <div>
-                      <div className="text-xs text-gray-500">{item.title}</div>
-                      <div className="text-lg font-semibold">
+                      <div className='text-xs text-gray-500'>{item.title}</div>
+                      <div className='text-lg font-semibold'>
                         <Skeleton
                           loading={loading}
                           active
@@ -63,7 +67,11 @@ const StatsCards = ({
                             <Skeleton.Paragraph
                               active
                               rows={1}
-                              style={{ width: '65px', height: '24px', marginTop: '4px' }}
+                              style={{
+                                width: '65px',
+                                height: '24px',
+                                marginTop: '4px',
+                              }}
                             />
                           }
                         >
@@ -72,13 +80,28 @@ const StatsCards = ({
                       </div>
                     </div>
                   </div>
-                  {(loading || (item.trendData && item.trendData.length > 0)) && (
-                    <div className="w-24 h-10">
-                      <VChart
-                        spec={getTrendSpec(item.trendData, item.trendColor)}
-                        option={CHART_CONFIG}
-                      />
-                    </div>
+                  {item.title === t('当前余额') ? (
+                    <Tag
+                      color='white'
+                      shape='circle'
+                      size='large'
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/console/topup');
+                      }}
+                    >
+                      {t('充值')}
+                    </Tag>
+                  ) : (
+                    (loading ||
+                      (item.trendData && item.trendData.length > 0)) && (
+                      <div className='w-24 h-10'>
+                        <VChart
+                          spec={getTrendSpec(item.trendData, item.trendColor)}
+                          option={CHART_CONFIG}
+                        />
+                      </div>
+                    )
                   )}
                 </div>
               ))}
@@ -90,4 +113,4 @@ const StatsCards = ({
   );
 };
 
-export default StatsCards; 
+export default StatsCards;

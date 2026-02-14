@@ -26,6 +26,7 @@ export const TABLE_COMPACT_MODES_KEY = 'table_compact_modes';
 export const API_ENDPOINTS = [
   '/v1/chat/completions',
   '/v1/responses',
+  '/v1/responses/compact',
   '/v1/messages',
   '/v1beta/models',
   '/v1/embeddings',
@@ -35,8 +36,11 @@ export const API_ENDPOINTS = [
   '/v1/images/variations',
   '/v1/audio/speech',
   '/v1/audio/transcriptions',
-  '/v1/audio/translations'
+  '/v1/audio/translations',
 ];
 
 export const TASK_ACTION_GENERATE = 'generate';
 export const TASK_ACTION_TEXT_GENERATE = 'textGenerate';
+export const TASK_ACTION_FIRST_TAIL_GENERATE = 'firstTailGenerate';
+export const TASK_ACTION_REFERENCE_GENERATE = 'referenceGenerate';
+export const TASK_ACTION_REMIX_GENERATE = 'remixGenerate';

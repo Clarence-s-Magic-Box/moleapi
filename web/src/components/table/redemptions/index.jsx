@@ -19,10 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import CardPro from '../../common/ui/CardPro';
-import RedemptionsTable from './RedemptionsTable.jsx';
-import RedemptionsActions from './RedemptionsActions.jsx';
-import RedemptionsFilters from './RedemptionsFilters.jsx';
-import RedemptionsDescription from './RedemptionsDescription.jsx';
+import RedemptionsTable from './RedemptionsTable';
+import RedemptionsActions from './RedemptionsActions';
+import RedemptionsFilters from './RedemptionsFilters';
+import RedemptionsDescription from './RedemptionsDescription';
 import EditRedemptionModal from './modals/EditRedemptionModal';
 import { useRedemptionsData } from '../../../hooks/redemptions/useRedemptionsData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
@@ -71,7 +71,7 @@ const RedemptionsPage = () => {
       />
 
       <CardPro
-        type="type1"
+        type='type1'
         descriptionArea={
           <RedemptionsDescription
             compactMode={compactMode}
@@ -80,7 +80,7 @@ const RedemptionsPage = () => {
           />
         }
         actionsArea={
-          <div className="flex flex-col md:flex-row justify-between items-center gap-2 w-full">
+          <div className='flex flex-col md:flex-row justify-between items-center gap-2 w-full'>
             <RedemptionsActions
               selectedKeys={selectedKeys}
               setEditingRedemption={setEditingRedemption}
@@ -90,7 +90,7 @@ const RedemptionsPage = () => {
               t={t}
             />
 
-            <div className="w-full md:w-full lg:w-auto order-1 md:order-2">
+            <div className='w-full md:w-full lg:w-auto order-1 md:order-2'>
               <RedemptionsFilters
                 formInitValues={formInitValues}
                 setFormApi={setFormApi}
@@ -119,4 +119,4 @@ const RedemptionsPage = () => {
   );
 };
 
-export default RedemptionsPage; 
+export default RedemptionsPage;

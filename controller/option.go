@@ -2,14 +2,17 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"one-api/common"
-	"one-api/model"
-	"one-api/setting"
-	"one-api/setting/console_setting"
-	"one-api/setting/ratio_setting"
-	"one-api/setting/system_setting"
 	"strings"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/console_setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,7 +21,11 @@ func GetOptions(c *gin.Context) {
 	var options []*model.Option
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
-		if strings.HasSuffix(k, "Token") || strings.HasSuffix(k, "Secret") || strings.HasSuffix(k, "Key") {
+		if strings.HasSuffix(k, "Token") ||
+			strings.HasSuffix(k, "Secret") ||
+			strings.HasSuffix(k, "Key") ||
+			strings.HasSuffix(k, "secret") ||
+			strings.HasSuffix(k, "api_key") {
 			continue
 		}
 		options = append(options, &model.Option{
@@ -35,8 +42,13 @@ func GetOptions(c *gin.Context) {
 	return
 }
 
+type OptionUpdateRequest struct {
+	Key   string `json:"key"`
+	Value any    `json:"value"`
+}
+
 func UpdateOption(c *gin.Context) {
-	var option model.Option
+	var option OptionUpdateRequest
 	err := json.NewDecoder(c.Request.Body).Decode(&option)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -45,12 +57,30 @@ func UpdateOption(c *gin.Context) {
 		})
 		return
 	}
+	switch option.Value.(type) {
+	case bool:
+		option.Value = common.Interface2String(option.Value.(bool))
+	case float64:
+		option.Value = common.Interface2String(option.Value.(float64))
+	case int:
+		option.Value = common.Interface2String(option.Value.(int))
+	default:
+		option.Value = fmt.Sprintf("%v", option.Value)
+	}
 	switch option.Key {
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "无法启用 GitHub OAuth，请先填入 GitHub Client Id 以及 GitHub Client Secret！",
+			})
+			return
+		}
+	case "discord.enabled":
+		if option.Value == "true" && system_setting.GetDiscordSettings().ClientId == "" {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "无法启用 Discord OAuth，请先填入 Discord Client Id 以及 Discord Client Secret！",
 			})
 			return
 		}
@@ -104,7 +134,7 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "GroupRatio":
-		err = ratio_setting.CheckGroupRatio(option.Value)
+		err = ratio_setting.CheckGroupRatio(option.Value.(string))
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -112,8 +142,62 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "ImageRatio":
+		err = ratio_setting.UpdateImageRatioByJSONString(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "图片倍率设置失败: " + err.Error(),
+			})
+			return
+		}
+	case "AudioRatio":
+		err = ratio_setting.UpdateAudioRatioByJSONString(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "音频倍率设置失败: " + err.Error(),
+			})
+			return
+		}
+	case "AudioCompletionRatio":
+		err = ratio_setting.UpdateAudioCompletionRatioByJSONString(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "音频补全倍率设置失败: " + err.Error(),
+			})
+			return
+		}
+	case "CreateCacheRatio":
+		err = ratio_setting.UpdateCreateCacheRatioByJSONString(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "缓存创建倍率设置失败: " + err.Error(),
+			})
+			return
+		}
 	case "ModelRequestRateLimitGroup":
-		err = setting.CheckModelRequestRateLimitGroup(option.Value)
+		err = setting.CheckModelRequestRateLimitGroup(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case "AutomaticDisableStatusCodes":
+		_, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case "AutomaticRetryStatusCodes":
+		_, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string))
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -122,7 +206,7 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "console_setting.api_info":
-		err = console_setting.ValidateConsoleSettings(option.Value, "ApiInfo")
+		err = console_setting.ValidateConsoleSettings(option.Value.(string), "ApiInfo")
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -131,7 +215,7 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "console_setting.announcements":
-		err = console_setting.ValidateConsoleSettings(option.Value, "Announcements")
+		err = console_setting.ValidateConsoleSettings(option.Value.(string), "Announcements")
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -140,7 +224,7 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "console_setting.faq":
-		err = console_setting.ValidateConsoleSettings(option.Value, "FAQ")
+		err = console_setting.ValidateConsoleSettings(option.Value.(string), "FAQ")
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -149,7 +233,7 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "console_setting.uptime_kuma_groups":
-		err = console_setting.ValidateConsoleSettings(option.Value, "UptimeKumaGroups")
+		err = console_setting.ValidateConsoleSettings(option.Value.(string), "UptimeKumaGroups")
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -158,7 +242,7 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	}
-	err = model.UpdateOption(option.Key, option.Value)
+	err = model.UpdateOption(option.Key, option.Value.(string))
 	if err != nil {
 		common.ApiError(c, err)
 		return

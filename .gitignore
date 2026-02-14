@@ -1,5 +1,6 @@
 .idea
 .vscode
+.zed
 upload
 *.exe
 *.db
@@ -9,12 +10,20 @@ logs
 web/dist
 .env
 one-api
+new-api
+/__debug_bin*
 .DS_Store
 tiktoken_cache
 .eslintcache
+.gocache
+.gomodcache/
+.cache
+web/bun.lock
+plans
 
-# Allow committing a minimal placeholder so `go test`/`go build` doesn't fail
-# before the frontend build step populates `web/dist`.
-!web/dist/
-web/dist/*
-!web/dist/index.html
+electron/node_modules
+electron/dist
+data/
+.gomodcache/
+.gocache-temp
+.gopath

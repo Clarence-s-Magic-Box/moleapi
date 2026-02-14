@@ -2,10 +2,11 @@ package model
 
 import (
 	"fmt"
-	"one-api/common"
-	"one-api/constant"
-	"one-api/dto"
 	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 
 	"github.com/gin-gonic/gin"
 
@@ -37,7 +38,7 @@ func (user *UserBase) GetSetting() dto.UserSetting {
 	if user.Setting != "" {
 		err := common.Unmarshal([]byte(user.Setting), &setting)
 		if err != nil {
-			common.SysError("failed to unmarshal setting: " + err.Error())
+			common.SysLog("failed to unmarshal setting: " + err.Error())
 		}
 	}
 	return setting
@@ -78,7 +79,7 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 		if shouldUpdateRedis(fromDB, err) && user != nil {
 			gopool.Go(func() {
 				if err := updateUserCache(*user); err != nil {
-					common.SysError("failed to update user status cache: " + err.Error())
+					common.SysLog("failed to update user status cache: " + err.Error())
 				}
 			})
 		}
@@ -203,6 +204,10 @@ func updateUserGroupCache(userId int, group string) error {
 	return common.RedisHSetField(getUserCacheKey(userId), "Group", group)
 }
 
+func UpdateUserGroupCache(userId int, group string) error {
+	return updateUserGroupCache(userId, group)
+}
+
 func updateUserNameCache(userId int, username string) error {
 	if !common.RedisEnabled {
 		return nil
@@ -215,4 +220,14 @@ func updateUserSettingCache(userId int, setting string) error {
 		return nil
 	}
 	return common.RedisHSetField(getUserCacheKey(userId), "Setting", setting)
+}
+
+// GetUserLanguage returns the user's language preference from cache
+// Uses the existing GetUserCache mechanism for efficiency
+func GetUserLanguage(userId int) string {
+	userCache, err := GetUserCache(userId)
+	if err != nil {
+		return ""
+	}
+	return userCache.GetSetting().Language
 }

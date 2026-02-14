@@ -19,12 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useMemo } from 'react';
 import { Empty, Descriptions } from '@douyinfe/semi-ui';
-import CardTable from '../../common/ui/CardTable.js';
+import CardTable from '../../common/ui/CardTable';
 import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
-import { getLogsColumns } from './UsageLogsColumnDefs.js';
+import { getLogsColumns } from './UsageLogsColumnDefs';
 
 const LogsTable = (logsData) => {
   const {
@@ -40,6 +40,7 @@ const LogsTable = (logsData) => {
     handlePageSizeChange,
     copyText,
     showUserInfoFunc,
+    openChannelAffinityUsageCacheModal,
     hasExpandableRows,
     isAdminUser,
     t,
@@ -53,6 +54,7 @@ const LogsTable = (logsData) => {
       COLUMN_KEYS,
       copyText,
       showUserInfoFunc,
+      openChannelAffinityUsageCacheModal,
       isAdminUser,
     });
   }, [
@@ -60,6 +62,7 @@ const LogsTable = (logsData) => {
     COLUMN_KEYS,
     copyText,
     showUserInfoFunc,
+    openChannelAffinityUsageCacheModal,
     isAdminUser,
   ]);
 
@@ -99,9 +102,7 @@ const LogsTable = (logsData) => {
       size='middle'
       empty={
         <Empty
-          image={
-            <IllustrationNoResult style={{ width: 150, height: 150 }} />
-          }
+          image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
           darkModeImage={
             <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
           }
@@ -125,4 +126,4 @@ const LogsTable = (logsData) => {
   );
 };
 
-export default LogsTable; 
+export default LogsTable;

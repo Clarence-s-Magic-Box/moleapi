@@ -17,7 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { getUserIdFromLocalStorage, showError, formatMessageForAPI, isValidMessage } from './utils';
+import {
+  getUserIdFromLocalStorage,
+  showError,
+  formatMessageForAPI,
+  isValidMessage,
+} from './utils';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
 
@@ -90,7 +95,12 @@ API.interceptors.response.use(
 // playground
 
 // 构建API请求负载
-export const buildApiPayload = (messages, systemPrompt, inputs, parameterEnabled) => {
+export const buildApiPayload = (
+  messages,
+  systemPrompt,
+  inputs,
+  parameterEnabled,
+) => {
   const processedMessages = messages
     .filter(isValidMessage)
     .map(formatMessageForAPI)
@@ -100,7 +110,7 @@ export const buildApiPayload = (messages, systemPrompt, inputs, parameterEnabled
   if (systemPrompt && systemPrompt.trim()) {
     processedMessages.unshift({
       role: MESSAGE_ROLES.SYSTEM,
-      content: systemPrompt.trim()
+      content: systemPrompt.trim(),
     });
   }
 
@@ -119,12 +129,16 @@ export const buildApiPayload = (messages, systemPrompt, inputs, parameterEnabled
     max_tokens: 'max_tokens',
     frequency_penalty: 'frequency_penalty',
     presence_penalty: 'presence_penalty',
-    seed: 'seed'
+    seed: 'seed',
   };
 
   Object.entries(parameterMappings).forEach(([key, param]) => {
-    if (parameterEnabled[key] && inputs[param] !== undefined && inputs[param] !== null) {
-      payload[param] = inputs[param];
+    const enabled = parameterEnabled[key];
+    const value = inputs[param];
+    const hasValue = value !== undefined && value !== null;
+
+    if (enabled && hasValue) {
+      payload[param] = value;
     }
   });
 
@@ -136,7 +150,7 @@ export const handleApiError = (error, response = null) => {
   const errorInfo = {
     error: error.message || '未知错误',
     timestamp: new Date().toISOString(),
-    stack: error.stack
+    stack: error.stack,
   };
 
   if (response) {
@@ -155,15 +169,18 @@ export const handleApiError = (error, response = null) => {
 
 // 处理模型数据
 export const processModelsData = (data, currentModel) => {
-  const modelOptions = data.map(model => ({
+  const modelOptions = data.map((model) => ({
     label: model,
     value: model,
   }));
 
-  const hasCurrentModel = modelOptions.some(option => option.value === currentModel);
-  const selectedModel = hasCurrentModel && modelOptions.length > 0
-    ? currentModel
-    : modelOptions[0]?.value;
+  const hasCurrentModel = modelOptions.some(
+    (option) => option.value === currentModel,
+  );
+  const selectedModel =
+    hasCurrentModel && modelOptions.length > 0
+      ? currentModel
+      : modelOptions[0]?.value;
 
   return { modelOptions, selectedModel };
 };
@@ -171,20 +188,23 @@ export const processModelsData = (data, currentModel) => {
 // 处理分组数据
 export const processGroupsData = (data, userGroup) => {
   let groupOptions = Object.entries(data).map(([group, info]) => ({
-    label: info.desc.length > 20 ? info.desc.substring(0, 20) + '...' : info.desc,
+    label:
+      info.desc.length > 20 ? info.desc.substring(0, 20) + '...' : info.desc,
     value: group,
     ratio: info.ratio,
     fullLabel: info.desc,
   }));
 
   if (groupOptions.length === 0) {
-    groupOptions = [{
-      label: '用户分组',
-      value: '',
-      ratio: 1,
-    }];
+    groupOptions = [
+      {
+        label: '用户分组',
+        value: '',
+        ratio: 1,
+      },
+    ];
   } else if (userGroup) {
-    const userGroupIndex = groupOptions.findIndex(g => g.value === userGroup);
+    const userGroupIndex = groupOptions.findIndex((g) => g.value === userGroup);
     if (userGroupIndex > -1) {
       const userGroupOption = groupOptions.splice(userGroupIndex, 1)[0];
       groupOptions.unshift(userGroupOption);
@@ -212,34 +232,109 @@ export async function getOAuthState() {
   }
 }
 
-export async function onOIDCClicked(auth_url, client_id, openInNewTab = false) {
-  const state = await getOAuthState();
+async function prepareOAuthState(options = {}) {
+  const { shouldLogout = false } = options;
+  if (shouldLogout) {
+    try {
+      await API.get('/api/user/logout', { skipErrorHandler: true });
+    } catch (err) {}
+    localStorage.removeItem('user');
+    updateAPI();
+  }
+  return await getOAuthState();
+}
+
+export async function onDiscordOAuthClicked(client_id, options = {}) {
+  const state = await prepareOAuthState(options);
   if (!state) return;
-  const redirect_uri = `${window.location.origin}/oauth/oidc`;
+  const redirect_uri = `${window.location.origin}/oauth/discord`;
   const response_type = 'code';
-  const scope = 'openid profile email';
-  const url = `${auth_url}?client_id=${client_id}&redirect_uri=${redirect_uri}&response_type=${response_type}&scope=${scope}&state=${state}`;
+  const scope = 'identify+openid';
+  window.open(
+    `https://discord.com/oauth2/authorize?client_id=${client_id}&redirect_uri=${redirect_uri}&response_type=${response_type}&scope=${scope}&state=${state}`,
+  );
+}
+
+export async function onOIDCClicked(
+  auth_url,
+  client_id,
+  openInNewTab = false,
+  options = {},
+) {
+  const state = await prepareOAuthState(options);
+  if (!state) return;
+  const url = new URL(auth_url);
+  url.searchParams.set('client_id', client_id);
+  url.searchParams.set('redirect_uri', `${window.location.origin}/oauth/oidc`);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', 'openid profile email');
+  url.searchParams.set('state', state);
   if (openInNewTab) {
-    window.open(url);
+    window.open(url.toString(), '_blank');
   } else {
-    window.location.href = url;
+    window.location.href = url.toString();
   }
 }
 
-export async function onGitHubOAuthClicked(github_client_id) {
-  const state = await getOAuthState();
+export async function onGitHubOAuthClicked(github_client_id, options = {}) {
+  const state = await prepareOAuthState(options);
   if (!state) return;
   window.open(
     `https://github.com/login/oauth/authorize?client_id=${github_client_id}&state=${state}&scope=user:email`,
   );
 }
 
-export async function onLinuxDOOAuthClicked(linuxdo_client_id) {
-  const state = await getOAuthState();
+export async function onLinuxDOOAuthClicked(
+  linuxdo_client_id,
+  options = { shouldLogout: false },
+) {
+  const state = await prepareOAuthState(options);
   if (!state) return;
   window.open(
     `https://connect.linux.do/oauth2/authorize?response_type=code&client_id=${linuxdo_client_id}&state=${state}`,
   );
+}
+
+/**
+ * Initiate custom OAuth login
+ * @param {Object} provider - Custom OAuth provider config from status API
+ * @param {string} provider.slug - Provider slug (used for callback URL)
+ * @param {string} provider.client_id - OAuth client ID
+ * @param {string} provider.authorization_endpoint - Authorization URL
+ * @param {string} provider.scopes - OAuth scopes (space-separated)
+ * @param {Object} options - Options
+ * @param {boolean} options.shouldLogout - Whether to logout first
+ */
+export async function onCustomOAuthClicked(provider, options = {}) {
+  const state = await prepareOAuthState(options);
+  if (!state) return;
+  
+  try {
+    const redirect_uri = `${window.location.origin}/oauth/${provider.slug}`;
+    
+    // Check if authorization_endpoint is a full URL or relative path
+    let authUrl;
+    if (provider.authorization_endpoint.startsWith('http://') || 
+        provider.authorization_endpoint.startsWith('https://')) {
+      authUrl = new URL(provider.authorization_endpoint);
+    } else {
+      // Relative path - this is a configuration error, show error message
+      console.error('Custom OAuth authorization_endpoint must be a full URL:', provider.authorization_endpoint);
+      showError('OAuth 配置错误：授权端点必须是完整的 URL（以 http:// 或 https:// 开头）');
+      return;
+    }
+    
+    authUrl.searchParams.set('client_id', provider.client_id);
+    authUrl.searchParams.set('redirect_uri', redirect_uri);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('scope', provider.scopes || 'openid profile email');
+    authUrl.searchParams.set('state', state);
+    
+    window.open(authUrl.toString());
+  } catch (error) {
+    console.error('Failed to initiate custom OAuth:', error);
+    showError('OAuth 登录失败：' + (error.message || '未知错误'));
+  }
 }
 
 let channelModels = undefined;

@@ -1,34 +1,128 @@
-import React, { useState, useEffect } from 'react';
-import { useIsMobile } from '../../../../hooks/common/useIsMobile.js';
-import { Modal, Checkbox, Spin, Input, Typography, Empty, Tabs, Collapse } from '@douyinfe/semi-ui';
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { useIsMobile } from '../../../../hooks/common/useIsMobile';
+import {
+  Modal,
+  Checkbox,
+  Spin,
+  Input,
+  Typography,
+  Empty,
+  Tabs,
+  Collapse,
+  Tooltip,
+} from '@douyinfe/semi-ui';
 import {
   IllustrationNoResult,
-  IllustrationNoResultDark
+  IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
-import { IconSearch } from '@douyinfe/semi-icons';
+import { IconSearch, IconInfoCircle } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { getModelCategories } from '../../../../helpers/render';
 
-const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCancel }) => {
+const ModelSelectModal = ({
+  visible,
+  models = [],
+  selected = [],
+  redirectModels = [],
+  onConfirm,
+  onCancel,
+}) => {
   const { t } = useTranslation();
-  const [checkedList, setCheckedList] = useState(selected);
+
+  const getModelName = (model) => {
+    if (!model) return '';
+    if (typeof model === 'string') return model;
+    if (typeof model === 'object' && model.model_name) return model.model_name;
+    return String(model ?? '');
+  };
+
+  const normalizedSelected = useMemo(
+    () => (selected || []).map(getModelName),
+    [selected],
+  );
+
+  const [checkedList, setCheckedList] = useState(normalizedSelected);
   const [keyword, setKeyword] = useState('');
   const [activeTab, setActiveTab] = useState('new');
 
   const isMobile = useIsMobile();
+  const normalizeModelName = (model) =>
+    typeof model === 'string' ? model.trim() : '';
+  const normalizedRedirectModels = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (redirectModels || [])
+            .map((model) => normalizeModelName(model))
+            .filter(Boolean),
+        ),
+      ),
+    [redirectModels],
+  );
+  const normalizedSelectedSet = useMemo(() => {
+    const set = new Set();
+    (selected || []).forEach((model) => {
+      const normalized = normalizeModelName(model);
+      if (normalized) {
+        set.add(normalized);
+      }
+    });
+    return set;
+  }, [selected]);
+  const classificationSet = useMemo(() => {
+    const set = new Set(normalizedSelectedSet);
+    normalizedRedirectModels.forEach((model) => set.add(model));
+    return set;
+  }, [normalizedSelectedSet, normalizedRedirectModels]);
+  const redirectOnlySet = useMemo(() => {
+    const set = new Set();
+    normalizedRedirectModels.forEach((model) => {
+      if (!normalizedSelectedSet.has(model)) {
+        set.add(model);
+      }
+    });
+    return set;
+  }, [normalizedRedirectModels, normalizedSelectedSet]);
 
-  const filteredModels = models.filter((m) => m.toLowerCase().includes(keyword.toLowerCase()));
+  const filteredModels = models.filter((m) =>
+    String(m || '')
+      .toLowerCase()
+      .includes(keyword.toLowerCase()),
+  );
 
   // 分类模型：新获取的模型和已有模型
-  const newModels = filteredModels.filter(model => !selected.includes(model));
-  const existingModels = filteredModels.filter(model => selected.includes(model));
+  const isExistingModel = (model) =>
+    classificationSet.has(normalizeModelName(model));
+  const newModels = filteredModels.filter((model) => !isExistingModel(model));
+  const existingModels = filteredModels.filter((model) =>
+    isExistingModel(model),
+  );
 
   // 同步外部选中值
   useEffect(() => {
     if (visible) {
-      setCheckedList(selected);
+      setCheckedList(normalizedSelected);
     }
-  }, [visible, selected]);
+  }, [visible, normalizedSelected]);
 
   // 当模型列表变化时，设置默认tab
   useEffect(() => {
@@ -49,7 +143,7 @@ const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCa
     const categorizedModels = {};
     const uncategorizedModels = [];
 
-    models.forEach(model => {
+    models.forEach((model) => {
       let foundCategory = false;
       for (const [key, category] of Object.entries(categories)) {
         if (key !== 'all' && category.filter({ model_name: model })) {
@@ -57,7 +151,7 @@ const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCa
             categorizedModels[key] = {
               label: category.label,
               icon: category.icon,
-              models: []
+              models: [],
             };
           }
           categorizedModels[key].models.push(model);
@@ -75,7 +169,7 @@ const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCa
       categorizedModels['other'] = {
         label: t('其他'),
         icon: null,
-        models: uncategorizedModels
+        models: uncategorizedModels,
       };
     }
 
@@ -87,14 +181,22 @@ const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCa
 
   // Tab列表配置
   const tabList = [
-    ...(newModels.length > 0 ? [{
-      tab: `${t('新获取的模型')} (${newModels.length})`,
-      itemKey: 'new'
-    }] : []),
-    ...(existingModels.length > 0 ? [{
-      tab: `${t('已有的模型')} (${existingModels.length})`,
-      itemKey: 'existing'
-    }] : [])
+    ...(newModels.length > 0
+      ? [
+          {
+            tab: `${t('新获取的模型')} (${newModels.length})`,
+            itemKey: 'new',
+          },
+        ]
+      : []),
+    ...(existingModels.length > 0
+      ? [
+          {
+            tab: `${t('已有的模型')} (${existingModels.length})`,
+            itemKey: 'existing',
+          },
+        ]
+      : []),
   ];
 
   // 处理分类全选/取消全选
@@ -103,14 +205,16 @@ const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCa
 
     if (isChecked) {
       // 全选：添加该分类下所有未选中的模型
-      categoryModels.forEach(model => {
+      categoryModels.forEach((model) => {
         if (!newCheckedList.includes(model)) {
           newCheckedList.push(model);
         }
       });
     } else {
       // 取消全选：移除该分类下所有已选中的模型
-      newCheckedList = newCheckedList.filter(model => !categoryModels.includes(model));
+      newCheckedList = newCheckedList.filter(
+        (model) => !categoryModels.includes(model),
+      );
     }
 
     setCheckedList(newCheckedList);
@@ -118,12 +222,17 @@ const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCa
 
   // 检查分类是否全选
   const isCategoryAllSelected = (categoryModels) => {
-    return categoryModels.length > 0 && categoryModels.every(model => checkedList.includes(model));
+    return (
+      categoryModels.length > 0 &&
+      categoryModels.every((model) => checkedList.includes(model))
+    );
   };
 
   // 检查分类是否部分选中
   const isCategoryIndeterminate = (categoryModels) => {
-    const selectedCount = categoryModels.filter(model => checkedList.includes(model)).length;
+    const selectedCount = categoryModels.filter((model) =>
+      checkedList.includes(model),
+    ).length;
     return selectedCount > 0 && selectedCount < categoryModels.length;
   };
 
@@ -132,10 +241,15 @@ const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCa
     if (categoryEntries.length === 0) return null;
 
     // 生成所有面板的key，确保都展开
-    const allActiveKeys = categoryEntries.map((_, index) => `${categoryKeyPrefix}_${index}`);
+    const allActiveKeys = categoryEntries.map(
+      (_, index) => `${categoryKeyPrefix}_${index}`,
+    );
 
     return (
-      <Collapse activeKey={allActiveKeys}>
+      <Collapse
+        key={`${categoryKeyPrefix}_${categoryEntries.length}`}
+        defaultActiveKey={[]}
+      >
         {categoryEntries.map(([key, categoryData], index) => (
           <Collapse.Panel
             key={`${categoryKeyPrefix}_${index}`}
@@ -147,25 +261,43 @@ const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCa
                 indeterminate={isCategoryIndeterminate(categoryData.models)}
                 onChange={(e) => {
                   e.stopPropagation(); // 防止触发面板折叠
-                  handleCategorySelectAll(categoryData.models, e.target.checked);
+                  handleCategorySelectAll(
+                    categoryData.models,
+                    e.target.checked,
+                  );
                 }}
                 onClick={(e) => e.stopPropagation()} // 防止点击checkbox时折叠面板
               />
             }
           >
-            <div className="flex items-center gap-2 mb-3">
+            <div className='flex items-center gap-2 mb-3'>
               {categoryData.icon}
-              <Typography.Text type="secondary" size="small">
+              <Typography.Text type='secondary' size='small'>
                 {t('已选择 {{selected}} / {{total}}', {
-                  selected: categoryData.models.filter(model => checkedList.includes(model)).length,
-                  total: categoryData.models.length
+                  selected: categoryData.models.filter((model) =>
+                    checkedList.includes(model),
+                  ).length,
+                  total: categoryData.models.length,
                 })}
               </Typography.Text>
             </div>
-            <div className="grid grid-cols-2 gap-x-4">
+            <div className='grid grid-cols-2 gap-x-4'>
               {categoryData.models.map((model) => (
-                <Checkbox key={model} value={model} className="my-1">
-                  {model}
+                <Checkbox key={model} value={model} className='my-1'>
+                  <span className='flex items-center gap-2'>
+                    <span>{model}</span>
+                    {redirectOnlySet.has(normalizeModelName(model)) && (
+                      <Tooltip
+                        position='top'
+                        content={t('来自模型重定向，尚未加入模型列表')}
+                      >
+                        <IconInfoCircle
+                          size='small'
+                          className='text-amber-500 cursor-help'
+                        />
+                      </Tooltip>
+                    )}
+                  </span>
                 </Checkbox>
               ))}
             </div>
@@ -178,14 +310,14 @@ const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCa
   return (
     <Modal
       header={
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 py-4">
-          <Typography.Title heading={5} className="m-0">
+        <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 py-4'>
+          <Typography.Title heading={5} className='m-0'>
             {t('选择模型')}
           </Typography.Title>
-          <div className="flex-shrink-0">
+          <div className='flex-shrink-0'>
             <Tabs
-              type="slash"
-              size="small"
+              type='slash'
+              size='small'
               tabList={tabList}
               activeKey={activeTab}
               onChange={(key) => setActiveTab(key)}
@@ -215,17 +347,22 @@ const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCa
         <div style={{ maxHeight: 400, overflowY: 'auto', paddingRight: 8 }}>
           {filteredModels.length === 0 ? (
             <Empty
-              image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
-              darkModeImage={<IllustrationNoResultDark style={{ width: 150, height: 150 }} />}
+              image={
+                <IllustrationNoResult style={{ width: 150, height: 150 }} />
+              }
+              darkModeImage={
+                <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
+              }
               description={t('暂无匹配模型')}
               style={{ padding: 30 }}
             />
           ) : (
-            <Checkbox.Group value={checkedList} onChange={(vals) => setCheckedList(vals)}>
+            <Checkbox.Group
+              value={checkedList}
+              onChange={(vals) => setCheckedList(vals)}
+            >
               {activeTab === 'new' && newModels.length > 0 && (
-                <div>
-                  {renderModelsByCategory(newModelsByCategory, 'new')}
-                </div>
+                <div>{renderModelsByCategory(newModelsByCategory, 'new')}</div>
               )}
               {activeTab === 'existing' && existingModels.length > 0 && (
                 <div>
@@ -237,20 +374,30 @@ const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCa
         </div>
       </Spin>
 
-      <Typography.Text type="secondary" size="small" className="block text-right mt-4">
-        <div className="flex items-center justify-end gap-2">
+      <Typography.Text
+        type='secondary'
+        size='small'
+        className='block text-right mt-4'
+      >
+        <div className='flex items-center justify-end gap-2'>
           {(() => {
-            const currentModels = activeTab === 'new' ? newModels : existingModels;
-            const currentSelected = currentModels.filter(model => checkedList.includes(model)).length;
-            const isAllSelected = currentModels.length > 0 && currentSelected === currentModels.length;
-            const isIndeterminate = currentSelected > 0 && currentSelected < currentModels.length;
+            const currentModels =
+              activeTab === 'new' ? newModels : existingModels;
+            const currentSelected = currentModels.filter((model) =>
+              checkedList.includes(model),
+            ).length;
+            const isAllSelected =
+              currentModels.length > 0 &&
+              currentSelected === currentModels.length;
+            const isIndeterminate =
+              currentSelected > 0 && currentSelected < currentModels.length;
 
             return (
               <>
                 <span>
                   {t('已选择 {{selected}} / {{total}}', {
                     selected: currentSelected,
-                    total: currentModels.length
+                    total: currentModels.length,
                   })}
                 </span>
                 <Checkbox
@@ -269,4 +416,4 @@ const ModelSelectModal = ({ visible, models = [], selected = [], onConfirm, onCa
   );
 };
 
-export default ModelSelectModal; 
+export default ModelSelectModal;

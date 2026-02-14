@@ -1,8 +1,10 @@
 package zhipu_4v
 
 import (
-	"one-api/dto"
 	"time"
+
+	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/types"
 )
 
 //	type ZhipuMessage struct {
@@ -36,7 +38,7 @@ type ZhipuV4Response struct {
 	Model               string                         `json:"model"`
 	TextResponseChoices []dto.OpenAITextResponseChoice `json:"choices"`
 	Usage               dto.Usage                      `json:"usage"`
-	Error               dto.OpenAIError                `json:"error"`
+	Error               types.OpenAIError              `json:"error"`
 }
 
 //

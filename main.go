@@ -1,20 +1,28 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
 	"log"
 	"net/http"
-	"one-api/common"
-	"one-api/constant"
-	"one-api/controller"
-	"one-api/middleware"
-	"one-api/model"
-	"one-api/router"
-	"one-api/service"
-	"one-api/setting/ratio_setting"
 	"os"
 	"strconv"
+	"strings"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/router"
+	"github.com/QuantumNous/new-api/service"
+	_ "github.com/QuantumNous/new-api/setting/performance_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-contrib/sessions"
@@ -32,6 +40,7 @@ var buildFS embed.FS
 var indexPage []byte
 
 func main() {
+	startTime := time.Now()
 
 	err := InitResources()
 	if err != nil {
@@ -60,13 +69,13 @@ func main() {
 	}
 	if common.MemoryCacheEnabled {
 		common.SysLog("memory cache enabled")
-		common.SysError(fmt.Sprintf("sync frequency: %d seconds", common.SyncFrequency))
+		common.SysLog(fmt.Sprintf("sync frequency: %d seconds", common.SyncFrequency))
 
 		// Add panic recovery and retry for InitChannelCache
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					common.SysError(fmt.Sprintf("InitChannelCache panic: %v, retrying once", r))
+					common.SysLog(fmt.Sprintf("InitChannelCache panic: %v, retrying once", r))
 					// Retry once
 					_, _, fixErr := model.FixAbility()
 					if fixErr != nil {
@@ -93,13 +102,15 @@ func main() {
 		}
 		go controller.AutomaticallyUpdateChannels(frequency)
 	}
-	if os.Getenv("CHANNEL_TEST_FREQUENCY") != "" {
-		frequency, err := strconv.Atoi(os.Getenv("CHANNEL_TEST_FREQUENCY"))
-		if err != nil {
-			common.FatalLog("failed to parse CHANNEL_TEST_FREQUENCY: " + err.Error())
-		}
-		go controller.AutomaticallyTestChannels(frequency)
-	}
+
+	go controller.AutomaticallyTestChannels()
+
+	// Codex credential auto-refresh check every 10 minutes, refresh when expires within 1 day
+	service.StartCodexCredentialAutoRefreshTask()
+
+	// Subscription quota reset task (daily/weekly/monthly/custom)
+	service.StartSubscriptionQuotaResetTask()
+
 	if common.IsMasterNode && constant.UpdateTask {
 		gopool.Go(func() {
 			controller.UpdateMidjourneyTaskBulk()
@@ -122,10 +133,15 @@ func main() {
 		common.SysLog("pprof enabled")
 	}
 
+	err = common.StartPyroScope()
+	if err != nil {
+		common.SysError(fmt.Sprintf("start pyroscope error : %v", err))
+	}
+
 	// Initialize HTTP server
 	server := gin.New()
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
-		common.SysError(fmt.Sprintf("panic detected: %v", err))
+		common.SysLog(fmt.Sprintf("panic detected: %v", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
 				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/new-api", err),
@@ -136,6 +152,8 @@ func main() {
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
 	server.Use(middleware.RequestId())
+	server.Use(middleware.PoweredBy())
+	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
 	// Initialize session store
 	store := cookie.NewStore([]byte(common.SessionSecret))
@@ -148,15 +166,64 @@ func main() {
 	})
 	server.Use(sessions.Sessions("session", store))
 
+	InjectUmamiAnalytics()
+	InjectGoogleAnalytics()
+
+	// 设置路由
 	router.SetRouter(server, buildFS, indexPage)
 	var port = os.Getenv("PORT")
 	if port == "" {
 		port = strconv.Itoa(*common.Port)
 	}
+
+	// Log startup success message
+	common.LogStartupSuccess(startTime, port)
+
 	err = server.Run(":" + port)
 	if err != nil {
 		common.FatalLog("failed to start HTTP server: " + err.Error())
 	}
+}
+
+func InjectUmamiAnalytics() {
+	analyticsInjectBuilder := &strings.Builder{}
+	if os.Getenv("UMAMI_WEBSITE_ID") != "" {
+		umamiSiteID := os.Getenv("UMAMI_WEBSITE_ID")
+		umamiScriptURL := os.Getenv("UMAMI_SCRIPT_URL")
+		if umamiScriptURL == "" {
+			umamiScriptURL = "https://analytics.umami.is/script.js"
+		}
+		analyticsInjectBuilder.WriteString("<script defer src=\"")
+		analyticsInjectBuilder.WriteString(umamiScriptURL)
+		analyticsInjectBuilder.WriteString("\" data-website-id=\"")
+		analyticsInjectBuilder.WriteString(umamiSiteID)
+		analyticsInjectBuilder.WriteString("\"></script>")
+	}
+	analyticsInjectBuilder.WriteString("<!--Umami QuantumNous-->\n")
+	analyticsInject := analyticsInjectBuilder.String()
+	indexPage = bytes.ReplaceAll(indexPage, []byte("<!--umami-->\n"), []byte(analyticsInject))
+}
+
+func InjectGoogleAnalytics() {
+	analyticsInjectBuilder := &strings.Builder{}
+	if os.Getenv("GOOGLE_ANALYTICS_ID") != "" {
+		gaID := os.Getenv("GOOGLE_ANALYTICS_ID")
+		// Google Analytics 4 (gtag.js)
+		analyticsInjectBuilder.WriteString("<script async src=\"https://www.googletagmanager.com/gtag/js?id=")
+		analyticsInjectBuilder.WriteString(gaID)
+		analyticsInjectBuilder.WriteString("\"></script>")
+		analyticsInjectBuilder.WriteString("<script>")
+		analyticsInjectBuilder.WriteString("window.dataLayer = window.dataLayer || [];")
+		analyticsInjectBuilder.WriteString("function gtag(){dataLayer.push(arguments);}")
+		analyticsInjectBuilder.WriteString("gtag('js', new Date());")
+		analyticsInjectBuilder.WriteString("gtag('config', '")
+		analyticsInjectBuilder.WriteString(gaID)
+		analyticsInjectBuilder.WriteString("');")
+		analyticsInjectBuilder.WriteString("</script>")
+	}
+	analyticsInjectBuilder.WriteString("<!--Google Analytics QuantumNous-->\n")
+	analyticsInject := analyticsInjectBuilder.String()
+	indexPage = bytes.ReplaceAll(indexPage, []byte("<!--Google Analytics-->\n"), []byte(analyticsInject))
 }
 
 func InitResources() error {
@@ -164,14 +231,15 @@ func InitResources() error {
 	// This is a placeholder function for future resource initialization
 	err := godotenv.Load(".env")
 	if err != nil {
-		common.SysLog("未找到 .env 文件，使用默认环境变量，如果需要，请创建 .env 文件并设置相关变量")
-		common.SysLog("No .env file found, using default environment variables. If needed, please create a .env file and set the relevant variables.")
+		if common.DebugEnabled {
+			common.SysLog("No .env file found, using default environment variables. If needed, please create a .env file and set the relevant variables.")
+		}
 	}
 
 	// 加载环境变量
 	common.InitEnv()
 
-	common.SetupLogger()
+	logger.SetupLogger()
 
 	// Initialize model settings
 	ratio_setting.InitRatioSettings()
@@ -192,6 +260,9 @@ func InitResources() error {
 	// Initialize options, should after model.InitDB()
 	model.InitOptionMap()
 
+	// 清理旧的磁盘缓存文件
+	common.CleanupOldCacheFiles()
+
 	// 初始化模型
 	model.GetPricing()
 
@@ -206,5 +277,27 @@ func InitResources() error {
 	if err != nil {
 		return err
 	}
+
+	// 启动系统监控
+	common.StartSystemMonitor()
+
+	// Initialize i18n
+	err = i18n.Init()
+	if err != nil {
+		common.SysError("failed to initialize i18n: " + err.Error())
+		// Don't return error, i18n is not critical
+	} else {
+		common.SysLog("i18n initialized with languages: " + strings.Join(i18n.SupportedLanguages(), ", "))
+	}
+	// Register user language loader for lazy loading
+	i18n.SetUserLangLoader(model.GetUserLanguage)
+
+	// Load custom OAuth providers from database
+	err = oauth.LoadCustomProviders()
+	if err != nil {
+		common.SysError("failed to load custom OAuth providers: " + err.Error())
+		// Don't return error, custom OAuth is not critical
+	}
+
 	return nil
 }

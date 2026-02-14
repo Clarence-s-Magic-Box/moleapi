@@ -3,7 +3,12 @@ package dto
 import (
 	"encoding/json"
 	"fmt"
-	"one-api/types"
+
+	"github.com/QuantumNous/new-api/types"
+)
+
+const (
+	ResponsesOutputTypeImageGenerationCall = "image_generation_call"
 )
 
 type SimpleResponse struct {
@@ -110,7 +115,7 @@ func (c *ChatCompletionsStreamResponseChoiceDelta) GetReasoningContent() string 
 
 func (c *ChatCompletionsStreamResponseChoiceDelta) SetReasoningContent(s string) {
 	c.ReasoningContent = &s
-	c.Reasoning = &s
+	//c.Reasoning = &s
 }
 
 type ToolCallResponse struct {
@@ -143,6 +148,13 @@ type ChatCompletionsStreamResponse struct {
 	Usage             *Usage                                `json:"usage"`
 }
 
+func (c *ChatCompletionsStreamResponse) IsFinished() bool {
+	if len(c.Choices) == 0 {
+		return false
+	}
+	return c.Choices[0].FinishReason != nil && *c.Choices[0].FinishReason != ""
+}
+
 func (c *ChatCompletionsStreamResponse) IsToolCall() bool {
 	if len(c.Choices) == 0 {
 		return false
@@ -155,6 +167,19 @@ func (c *ChatCompletionsStreamResponse) GetFirstToolCall() *ToolCallResponse {
 		return &c.Choices[0].Delta.ToolCalls[0]
 	}
 	return nil
+}
+
+func (c *ChatCompletionsStreamResponse) ClearToolCalls() {
+	if !c.IsToolCall() {
+		return
+	}
+	for choiceIdx := range c.Choices {
+		for callIdx := range c.Choices[choiceIdx].Delta.ToolCalls {
+			c.Choices[choiceIdx].Delta.ToolCalls[callIdx].ID = ""
+			c.Choices[choiceIdx].Delta.ToolCalls[callIdx].Type = nil
+			c.Choices[choiceIdx].Delta.ToolCalls[callIdx].Function.Name = ""
+		}
+	}
 }
 
 func (c *ChatCompletionsStreamResponse) Copy() *ChatCompletionsStreamResponse {
@@ -205,8 +230,23 @@ type Usage struct {
 	InputTokens            int                `json:"input_tokens"`
 	OutputTokens           int                `json:"output_tokens"`
 	InputTokensDetails     *InputTokenDetails `json:"input_tokens_details"`
+
+	// claude cache 1h
+	ClaudeCacheCreation5mTokens int `json:"claude_cache_creation_5_m_tokens"`
+	ClaudeCacheCreation1hTokens int `json:"claude_cache_creation_1_h_tokens"`
+
 	// OpenRouter Params
 	Cost any `json:"cost,omitempty"`
+}
+
+type OpenAIVideoResponse struct {
+	Id        string `json:"id" example:"file-abc123"`
+	Object    string `json:"object" example:"file"`
+	Bytes     int64  `json:"bytes" example:"120000"`
+	CreatedAt int64  `json:"created_at" example:"1677610602"`
+	ExpiresAt int64  `json:"expires_at" example:"1677614202"`
+	Filename  string `json:"filename" example:"mydata.jsonl"`
+	Purpose   string `json:"purpose" example:"fine-tune"`
 }
 
 type InputTokenDetails struct {
@@ -253,22 +293,68 @@ func (o *OpenAIResponsesResponse) GetOpenAIError() *types.OpenAIError {
 	return GetOpenAIError(o.Error)
 }
 
+func (o *OpenAIResponsesResponse) HasImageGenerationCall() bool {
+	if len(o.Output) == 0 {
+		return false
+	}
+	for _, output := range o.Output {
+		if output.Type == ResponsesOutputTypeImageGenerationCall {
+			return true
+		}
+	}
+	return false
+}
+
+func (o *OpenAIResponsesResponse) GetQuality() string {
+	if len(o.Output) == 0 {
+		return ""
+	}
+	for _, output := range o.Output {
+		if output.Type == ResponsesOutputTypeImageGenerationCall {
+			return output.Quality
+		}
+	}
+	return ""
+}
+
+func (o *OpenAIResponsesResponse) GetSize() string {
+	if len(o.Output) == 0 {
+		return ""
+	}
+	for _, output := range o.Output {
+		if output.Type == ResponsesOutputTypeImageGenerationCall {
+			return output.Size
+		}
+	}
+	return ""
+}
+
 type IncompleteDetails struct {
 	Reasoning string `json:"reasoning"`
 }
 
 type ResponsesOutput struct {
-	Type    string                   `json:"type"`
-	ID      string                   `json:"id"`
-	Status  string                   `json:"status"`
-	Role    string                   `json:"role"`
-	Content []ResponsesOutputContent `json:"content"`
+	Type      string                   `json:"type"`
+	ID        string                   `json:"id"`
+	Status    string                   `json:"status"`
+	Role      string                   `json:"role"`
+	Content   []ResponsesOutputContent `json:"content"`
+	Quality   string                   `json:"quality"`
+	Size      string                   `json:"size"`
+	CallId    string                   `json:"call_id,omitempty"`
+	Name      string                   `json:"name,omitempty"`
+	Arguments string                   `json:"arguments,omitempty"`
 }
 
 type ResponsesOutputContent struct {
 	Type        string        `json:"type"`
 	Text        string        `json:"text"`
 	Annotations []interface{} `json:"annotations"`
+}
+
+type ResponsesReasoningSummaryPart struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
 const (
@@ -291,6 +377,13 @@ type ResponsesStreamResponse struct {
 	Response *OpenAIResponsesResponse `json:"response,omitempty"`
 	Delta    string                   `json:"delta,omitempty"`
 	Item     *ResponsesOutput         `json:"item,omitempty"`
+	// - response.function_call_arguments.delta
+	// - response.function_call_arguments.done
+	OutputIndex  *int                           `json:"output_index,omitempty"`
+	ContentIndex *int                           `json:"content_index,omitempty"`
+	SummaryIndex *int                           `json:"summary_index,omitempty"`
+	ItemID       string                         `json:"item_id,omitempty"`
+	Part         *ResponsesReasoningSummaryPart `json:"part,omitempty"`
 }
 
 // GetOpenAIError 从动态错误类型中提取OpenAIError结构

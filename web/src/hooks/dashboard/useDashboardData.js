@@ -24,6 +24,7 @@ import { API, isAdmin, showError, timestamp2string } from '../../helpers';
 import { getDefaultTime, getInitialTimestamp } from '../../helpers/dashboard';
 import { TIME_OPTIONS } from '../../constants/dashboard.constants';
 import { useIsMobile } from '../common/useIsMobile';
+import { useMinimumLoadingTime } from '../common/useMinimumLoadingTime';
 
 export const useDashboardData = (userState, userDispatch, statusState) => {
   const { t } = useTranslation();
@@ -35,6 +36,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const [loading, setLoading] = useState(false);
   const [greetingVisible, setGreetingVisible] = useState(false);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
+  const showLoading = useMinimumLoadingTime(loading);
 
   // ========== 输入状态 ==========
   const [inputs, setInputs] = useState({
@@ -47,7 +49,8 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     data_export_default_time: '',
   });
 
-  const [dataExportDefaultTime, setDataExportDefaultTime] = useState(getDefaultTime());
+  const [dataExportDefaultTime, setDataExportDefaultTime] =
+    useState(getDefaultTime());
 
   // ========== 数据状态 ==========
   const [quotaData, setQuotaData] = useState([]);
@@ -70,7 +73,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     consumeQuota: [],
     tokens: [],
     rpm: [],
-    tpm: []
+    tpm: [],
   });
 
   // ========== Uptime 数据 ==========
@@ -84,7 +87,8 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
 
   // ========== Panel enable flags ==========
   const apiInfoEnabled = statusState?.status?.api_info_enabled ?? true;
-  const announcementsEnabled = statusState?.status?.announcements_enabled ?? true;
+  const announcementsEnabled =
+    statusState?.status?.announcements_enabled ?? true;
   const faqEnabled = statusState?.status?.faq_enabled ?? true;
   const uptimeEnabled = statusState?.status?.uptime_kuma_enabled ?? true;
 
@@ -92,16 +96,25 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const hasInfoPanels = announcementsEnabled || faqEnabled || uptimeEnabled;
 
   // ========== Memoized Values ==========
-  const timeOptions = useMemo(() => TIME_OPTIONS.map(option => ({
-    ...option,
-    label: t(option.label)
-  })), [t]);
+  const timeOptions = useMemo(
+    () =>
+      TIME_OPTIONS.map((option) => ({
+        ...option,
+        label: t(option.label),
+      })),
+    [t],
+  );
 
   const performanceMetrics = useMemo(() => {
     const { start_timestamp, end_timestamp } = inputs;
-    const timeDiff = (Date.parse(end_timestamp) - Date.parse(start_timestamp)) / 60000;
-    const avgRPM = isNaN(times / timeDiff) ? '0' : (times / timeDiff).toFixed(3);
-    const avgTPM = isNaN(consumeTokens / timeDiff) ? '0' : (consumeTokens / timeDiff).toFixed(3);
+    const timeDiff =
+      (Date.parse(end_timestamp) - Date.parse(start_timestamp)) / 60000;
+    const avgRPM = isNaN(times / timeDiff)
+      ? '0'
+      : (times / timeDiff).toFixed(3);
+    const avgTPM = isNaN(consumeTokens / timeDiff)
+      ? '0'
+      : (consumeTokens / timeDiff).toFixed(3);
 
     return { avgRPM, avgTPM, timeDiff };
   }, [times, consumeTokens, inputs.start_timestamp, inputs.end_timestamp]);
@@ -145,7 +158,6 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   // ========== API 调用函数 ==========
   const loadQuotaData = useCallback(async () => {
     setLoading(true);
-    const startTime = Date.now();
     try {
       let url = '';
       const { start_timestamp, end_timestamp, username } = inputs;
@@ -177,11 +189,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
         return [];
       }
     } finally {
-      const elapsed = Date.now() - startTime;
-      const remainingTime = Math.max(0, 500 - elapsed);
-      setTimeout(() => {
-        setLoading(false);
-      }, remainingTime);
+      setLoading(false);
     }
   }, [inputs, dataExportDefaultTime, isAdminUser, now]);
 
@@ -221,13 +229,16 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     return data;
   }, [loadQuotaData, loadUptimeData]);
 
-  const handleSearchConfirm = useCallback(async (updateChartDataCallback) => {
-    const data = await refresh();
-    if (data && data.length > 0 && updateChartDataCallback) {
-      updateChartDataCallback(data);
-    }
-    setSearchModalVisible(false);
-  }, [refresh]);
+  const handleSearchConfirm = useCallback(
+    async (updateChartDataCallback) => {
+      const data = await refresh();
+      if (data && data.length > 0 && updateChartDataCallback) {
+        updateChartDataCallback(data);
+      }
+      setSearchModalVisible(false);
+    },
+    [refresh],
+  );
 
   // ========== Effects ==========
   useEffect(() => {
@@ -246,7 +257,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
 
   return {
     // 基础状态
-    loading,
+    loading: showLoading,
     greetingVisible,
     searchModalVisible,
 
@@ -308,6 +319,6 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     // 导航和翻译
     navigate,
     t,
-    isMobile
+    isMobile,
   };
-}; 
+};

@@ -81,12 +81,17 @@ export const CHANNEL_OPTIONS = [
   {
     value: 16,
     color: 'violet',
-    label: '智谱 ChatGLM',
+    label: '智谱 ChatGLM（已经弃用，请使用智谱 GLM-4V）',
   },
   {
     value: 26,
     color: 'purple',
     label: '智谱 GLM-4V',
+  },
+  {
+    value: 27,
+    color: 'blue',
+    label: 'Perplexity',
   },
   {
     value: 24,
@@ -158,6 +163,31 @@ export const CHANNEL_OPTIONS = [
     value: 52,
     color: 'purple',
     label: 'Vidu',
+  },
+  {
+    value: 53,
+    color: 'blue',
+    label: 'SubModel',
+  },
+  {
+    value: 54,
+    color: 'blue',
+    label: '豆包视频',
+  },
+  {
+    value: 55,
+    color: 'green',
+    label: 'Sora',
+  },
+  {
+    value: 56,
+    color: 'blue',
+    label: 'Replicate',
+  },
+  {
+    value: 57,
+    color: 'blue',
+    label: 'Codex (OpenAI OAuth)',
   },
 ];
 

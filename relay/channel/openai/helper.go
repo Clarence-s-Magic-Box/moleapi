@@ -2,15 +2,18 @@ package openai
 
 import (
 	"encoding/json"
-	"errors"
-	"net/http"
-	"one-api/common"
-	"one-api/dto"
-	relaycommon "one-api/relay/common"
-	relayconstant "one-api/relay/constant"
-	"one-api/relay/helper"
-	"one-api/service"
 	"strings"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
+
+	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,11 +23,11 @@ func HandleStreamFormat(c *gin.Context, info *relaycommon.RelayInfo, data string
 	info.SendResponseCount++
 
 	switch info.RelayFormat {
-	case relaycommon.RelayFormatOpenAI:
+	case types.RelayFormatOpenAI:
 		return sendStreamData(c, info, data, forceFormat, thinkToContent)
-	case relaycommon.RelayFormatClaude:
+	case types.RelayFormatClaude:
 		return handleClaudeFormat(c, data, info)
-	case relaycommon.RelayFormatGemini:
+	case types.RelayFormatGemini:
 		return handleGeminiFormat(c, data, info)
 	}
 	return nil
@@ -49,7 +52,7 @@ func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo) error {
 	var streamResponse dto.ChatCompletionsStreamResponse
 	if err := common.Unmarshal(common.StringToByteSlice(data), &streamResponse); err != nil {
-		common.LogError(c, "failed to unmarshal stream response: "+err.Error())
+		logger.LogError(c, "failed to unmarshal stream response: "+err.Error())
 		return err
 	}
 
@@ -62,17 +65,13 @@ func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 
 	geminiResponseStr, err := common.Marshal(geminiResponse)
 	if err != nil {
-		common.LogError(c, "failed to marshal gemini response: "+err.Error())
+		logger.LogError(c, "failed to marshal gemini response: "+err.Error())
 		return err
 	}
 
 	// send gemini format response
 	c.Render(-1, common.CustomEvent{Data: "data: " + string(geminiResponseStr)})
-	if flusher, ok := c.Writer.(http.Flusher); ok {
-		flusher.Flush()
-	} else {
-		return errors.New("streaming error: flusher not found")
-	}
+	_ = helper.FlushWriter(c)
 	return nil
 }
 
@@ -109,14 +108,14 @@ func processChatCompletions(streamResp string, streamItems []string, responseTex
 	var streamResponses []dto.ChatCompletionsStreamResponse
 	if err := json.Unmarshal(common.StringToByteSlice(streamResp), &streamResponses); err != nil {
 		// 一次性解析失败，逐个解析
-		common.SysError("error unmarshalling stream response: " + err.Error())
+		common.SysLog("error unmarshalling stream response: " + err.Error())
 		for _, item := range streamItems {
 			var streamResponse dto.ChatCompletionsStreamResponse
 			if err := json.Unmarshal(common.StringToByteSlice(item), &streamResponse); err != nil {
 				return err
 			}
 			if err := ProcessStreamResponse(streamResponse, responseTextBuilder, toolCount); err != nil {
-				common.SysError("error processing stream response: " + err.Error())
+				common.SysLog("error processing stream response: " + err.Error())
 			}
 		}
 		return nil
@@ -145,7 +144,7 @@ func processCompletions(streamResp string, streamItems []string, responseTextBui
 	var streamResponses []dto.CompletionsStreamResponse
 	if err := json.Unmarshal(common.StringToByteSlice(streamResp), &streamResponses); err != nil {
 		// 一次性解析失败，逐个解析
-		common.SysError("error unmarshalling stream response: " + err.Error())
+		common.SysLog("error unmarshalling stream response: " + err.Error())
 		for _, item := range streamItems {
 			var streamResponse dto.CompletionsStreamResponse
 			if err := json.Unmarshal(common.StringToByteSlice(item), &streamResponse); err != nil {
@@ -173,7 +172,7 @@ func handleLastResponse(lastStreamData string, responseId *string, createAt *int
 	shouldSendLastResp *bool) error {
 
 	var lastStreamResponse dto.ChatCompletionsStreamResponse
-	if err := json.Unmarshal(common.StringToByteSlice(lastStreamData), &lastStreamResponse); err != nil {
+	if err := common.Unmarshal(common.StringToByteSlice(lastStreamData), &lastStreamResponse); err != nil {
 		return err
 	}
 
@@ -186,7 +185,9 @@ func handleLastResponse(lastStreamData string, responseId *string, createAt *int
 		*containStreamUsage = true
 		*usage = lastStreamResponse.Usage
 		if !info.ShouldIncludeUsage {
-			*shouldSendLastResp = false
+			*shouldSendLastResp = lo.SomeBy(lastStreamResponse.Choices, func(choice dto.ChatCompletionsStreamResponseChoice) bool {
+				return choice.Delta.GetContentString() != "" || choice.Delta.GetReasoningContent() != ""
+			})
 		}
 	}
 
@@ -198,7 +199,7 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 	usage *dto.Usage, containStreamUsage bool) {
 
 	switch info.RelayFormat {
-	case relaycommon.RelayFormatOpenAI:
+	case types.RelayFormatOpenAI:
 		if info.ShouldIncludeUsage && !containStreamUsage {
 			response := helper.GenerateFinalUsageResponse(responseId, createAt, model, *usage)
 			response.SetSystemFingerprint(systemFingerprint)
@@ -206,11 +207,10 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 		}
 		helper.Done(c)
 
-	case relaycommon.RelayFormatClaude:
-		info.ClaudeConvertInfo.Done = true
+	case types.RelayFormatClaude:
 		var streamResponse dto.ChatCompletionsStreamResponse
 		if err := common.Unmarshal(common.StringToByteSlice(lastStreamData), &streamResponse); err != nil {
-			common.SysError("error unmarshalling stream response: " + err.Error())
+			common.SysLog("error unmarshalling stream response: " + err.Error())
 			return
 		}
 
@@ -220,11 +220,12 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 		for _, resp := range claudeResponses {
 			_ = helper.ClaudeData(c, *resp)
 		}
+		info.ClaudeConvertInfo.Done = true
 
-	case relaycommon.RelayFormatGemini:
+	case types.RelayFormatGemini:
 		var streamResponse dto.ChatCompletionsStreamResponse
 		if err := common.Unmarshal(common.StringToByteSlice(lastStreamData), &streamResponse); err != nil {
-			common.SysError("error unmarshalling stream response: " + err.Error())
+			common.SysLog("error unmarshalling stream response: " + err.Error())
 			return
 		}
 
@@ -242,15 +243,13 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 
 		geminiResponseStr, err := common.Marshal(geminiResponse)
 		if err != nil {
-			common.SysError("error marshalling gemini response: " + err.Error())
+			common.SysLog("error marshalling gemini response: " + err.Error())
 			return
 		}
 
 		// 发送最终的 Gemini 响应
 		c.Render(-1, common.CustomEvent{Data: "data: " + string(geminiResponseStr)})
-		if flusher, ok := c.Writer.(http.Flusher); ok {
-			flusher.Flush()
-		}
+		_ = helper.FlushWriter(c)
 	}
 }
 

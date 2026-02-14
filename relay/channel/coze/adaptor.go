@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"one-api/dto"
-	"one-api/relay/channel"
-	"one-api/relay/common"
-	"one-api/types"
 	"time"
+
+	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/relay/channel"
+	"github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -122,7 +123,7 @@ func (a *Adaptor) GetModelList() []string {
 
 // GetRequestURL implements channel.Adaptor.
 func (a *Adaptor) GetRequestURL(info *common.RelayInfo) (string, error) {
-	return fmt.Sprintf("%s/v3/chat", info.BaseUrl), nil
+	return fmt.Sprintf("%s/v3/chat", info.ChannelBaseUrl), nil
 }
 
 // Init implements channel.Adaptor.

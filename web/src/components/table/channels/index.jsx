@@ -18,18 +18,21 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import CardPro from '../../common/ui/CardPro.js';
-import ChannelsTable from './ChannelsTable.jsx';
-import ChannelsActions from './ChannelsActions.jsx';
-import ChannelsFilters from './ChannelsFilters.jsx';
-import ChannelsTabs from './ChannelsTabs.jsx';
-import { useChannelsData } from '../../../hooks/channels/useChannelsData.js';
-import { useIsMobile } from '../../../hooks/common/useIsMobile.js';
-import BatchTagModal from './modals/BatchTagModal.jsx';
-import ModelTestModal from './modals/ModelTestModal.jsx';
-import ColumnSelectorModal from './modals/ColumnSelectorModal.jsx';
-import EditChannelModal from './modals/EditChannelModal.jsx';
-import EditTagModal from './modals/EditTagModal.jsx';
+import { Banner } from '@douyinfe/semi-ui';
+import { IconAlertTriangle } from '@douyinfe/semi-icons';
+import CardPro from '../../common/ui/CardPro';
+import ChannelsTable from './ChannelsTable';
+import ChannelsActions from './ChannelsActions';
+import ChannelsFilters from './ChannelsFilters';
+import ChannelsTabs from './ChannelsTabs';
+import { useChannelsData } from '../../../hooks/channels/useChannelsData';
+import { useIsMobile } from '../../../hooks/common/useIsMobile';
+import BatchTagModal from './modals/BatchTagModal';
+import ModelTestModal from './modals/ModelTestModal';
+import ColumnSelectorModal from './modals/ColumnSelectorModal';
+import EditChannelModal from './modals/EditChannelModal';
+import EditTagModal from './modals/EditTagModal';
+import MultiKeyManageModal from './modals/MultiKeyManageModal';
 import { createCardProPagination } from '../../../helpers/utils';
 
 const ChannelsPage = () => {
@@ -54,10 +57,32 @@ const ChannelsPage = () => {
       />
       <BatchTagModal {...channelsData} />
       <ModelTestModal {...channelsData} />
+      <MultiKeyManageModal
+        visible={channelsData.showMultiKeyManageModal}
+        onCancel={() => channelsData.setShowMultiKeyManageModal(false)}
+        channel={channelsData.currentMultiKeyChannel}
+        onRefresh={channelsData.refresh}
+      />
 
       {/* Main Content */}
+      {channelsData.globalPassThroughEnabled ? (
+        <Banner
+          type='warning'
+          closeIcon={null}
+          icon={
+            <IconAlertTriangle
+              size='large'
+              style={{ color: 'var(--semi-color-warning)' }}
+            />
+          }
+          description={channelsData.t(
+            '已开启全局请求透传：参数覆写、模型重定向、渠道适配等 NewAPI 内置功能将失效，非最佳实践；如因此产生问题，请勿提交 issue 反馈。',
+          )}
+          style={{ marginBottom: 12 }}
+        />
+      ) : null}
       <CardPro
-        type="type3"
+        type='type3'
         tabsArea={<ChannelsTabs {...channelsData} />}
         actionsArea={<ChannelsActions {...channelsData} />}
         searchArea={<ChannelsFilters {...channelsData} />}
@@ -78,4 +103,4 @@ const ChannelsPage = () => {
   );
 };
 
-export default ChannelsPage; 
+export default ChannelsPage;

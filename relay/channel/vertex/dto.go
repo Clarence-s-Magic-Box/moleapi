@@ -1,7 +1,9 @@
 package vertex
 
 import (
-	"one-api/dto"
+	"encoding/json"
+
+	"github.com/QuantumNous/new-api/dto"
 )
 
 type VertexAIClaudeRequest struct {
@@ -17,6 +19,7 @@ type VertexAIClaudeRequest struct {
 	Tools            any                 `json:"tools,omitempty"`
 	ToolChoice       any                 `json:"tool_choice,omitempty"`
 	Thinking         *dto.Thinking       `json:"thinking,omitempty"`
+	OutputConfig     json.RawMessage     `json:"output_config,omitempty"`
 }
 
 func copyRequest(req *dto.ClaudeRequest, version string) *VertexAIClaudeRequest {
@@ -33,5 +36,6 @@ func copyRequest(req *dto.ClaudeRequest, version string) *VertexAIClaudeRequest 
 		Tools:            req.Tools,
 		ToolChoice:       req.ToolChoice,
 		Thinking:         req.Thinking,
+		OutputConfig:     req.OutputConfig,
 	}
 }

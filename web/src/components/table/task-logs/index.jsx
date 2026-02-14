@@ -19,14 +19,15 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Layout } from '@douyinfe/semi-ui';
-import CardPro from '../../common/ui/CardPro.js';
-import TaskLogsTable from './TaskLogsTable.jsx';
-import TaskLogsActions from './TaskLogsActions.jsx';
-import TaskLogsFilters from './TaskLogsFilters.jsx';
-import ColumnSelectorModal from './modals/ColumnSelectorModal.jsx';
-import ContentModal from './modals/ContentModal.jsx';
-import { useTaskLogsData } from '../../../hooks/task-logs/useTaskLogsData.js';
-import { useIsMobile } from '../../../hooks/common/useIsMobile.js';
+import CardPro from '../../common/ui/CardPro';
+import TaskLogsTable from './TaskLogsTable';
+import TaskLogsActions from './TaskLogsActions';
+import TaskLogsFilters from './TaskLogsFilters';
+import ColumnSelectorModal from './modals/ColumnSelectorModal';
+import ContentModal from './modals/ContentModal';
+import UserInfoModal from '../usage-logs/modals/UserInfoModal';
+import { useTaskLogsData } from '../../../hooks/task-logs/useTaskLogsData';
+import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
 
 const TaskLogsPage = () => {
@@ -37,11 +38,19 @@ const TaskLogsPage = () => {
     <>
       {/* Modals */}
       <ColumnSelectorModal {...taskLogsData} />
-      <ContentModal {...taskLogsData} />
+      <ContentModal {...taskLogsData} isVideo={false} />
+      {/* 新增：视频预览弹窗 */}
+      <ContentModal
+        isModalOpen={taskLogsData.isVideoModalOpen}
+        setIsModalOpen={taskLogsData.setIsVideoModalOpen}
+        modalContent={taskLogsData.videoUrl}
+        isVideo={true}
+      />
+      <UserInfoModal {...taskLogsData} />
 
       <Layout>
         <CardPro
-          type="type2"
+          type='type2'
           statsArea={<TaskLogsActions {...taskLogsData} />}
           searchArea={<TaskLogsFilters {...taskLogsData} />}
           paginationArea={createCardProPagination({
@@ -62,4 +71,4 @@ const TaskLogsPage = () => {
   );
 };
 
-export default TaskLogsPage; 
+export default TaskLogsPage;

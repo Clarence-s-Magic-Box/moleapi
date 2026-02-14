@@ -19,12 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import CardPro from '../../common/ui/CardPro';
-import UsersTable from './UsersTable.jsx';
-import UsersActions from './UsersActions.jsx';
-import UsersFilters from './UsersFilters.jsx';
-import UsersDescription from './UsersDescription.jsx';
-import AddUserModal from './modals/AddUserModal.jsx';
-import EditUserModal from './modals/EditUserModal.jsx';
+import UsersTable from './UsersTable';
+import UsersActions from './UsersActions';
+import UsersFilters from './UsersFilters';
+import UsersDescription from './UsersDescription';
+import AddUserModal from './modals/AddUserModal';
+import EditUserModal from './modals/EditUserModal';
 import { useUsersData } from '../../../hooks/users/useUsersData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -78,7 +78,7 @@ const UsersPage = () => {
       />
 
       <CardPro
-        type="type1"
+        type='type1'
         descriptionArea={
           <UsersDescription
             compactMode={compactMode}
@@ -87,11 +87,8 @@ const UsersPage = () => {
           />
         }
         actionsArea={
-          <div className="flex flex-col md:flex-row justify-between items-center gap-2 w-full">
-            <UsersActions
-              setShowAddUser={setShowAddUser}
-              t={t}
-            />
+          <div className='flex flex-col md:flex-row justify-between items-center gap-2 w-full'>
+            <UsersActions setShowAddUser={setShowAddUser} t={t} />
 
             <UsersFilters
               formInitValues={formInitValues}
@@ -124,4 +121,4 @@ const UsersPage = () => {
   );
 };
 
-export default UsersPage; 
+export default UsersPage;

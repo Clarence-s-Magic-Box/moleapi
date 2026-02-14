@@ -4,14 +4,27 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	common2 "one-api/common"
-	"one-api/dto"
-	"one-api/relay/common"
+	"strings"
 
+	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 
-func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request any) error {
+func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Request) error {
+	if info.ChannelMeta == nil {
+		info.ChannelMeta = &common.ChannelMeta{}
+	}
+
+	isResponsesCompact := info.RelayMode == relayconstant.RelayModeResponsesCompact
+	originModelName := info.OriginModelName
+	mappingModelName := originModelName
+	if isResponsesCompact && strings.HasSuffix(originModelName, ratio_setting.CompactModelSuffix) {
+		mappingModelName = strings.TrimSuffix(originModelName, ratio_setting.CompactModelSuffix)
+	}
+
 	// map model name
 	modelMapping := c.GetString("model_mapping")
 	if modelMapping != "" && modelMapping != "{}" {
@@ -22,7 +35,7 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request any) erro
 		}
 
 		// 支持链式模型重定向，最终使用链尾的模型
-		currentModel := info.OriginModelName
+		currentModel := mappingModelName
 		visitedModels := map[string]bool{
 			currentModel: true,
 		}
@@ -52,41 +65,17 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request any) erro
 			info.UpstreamModelName = currentModel
 		}
 	}
-	if request != nil {
-		switch info.RelayFormat {
-		case common.RelayFormatGemini:
-			// Gemini 模型映射
-		case common.RelayFormatClaude:
-			if claudeRequest, ok := request.(*dto.ClaudeRequest); ok {
-				claudeRequest.Model = info.UpstreamModelName
-			}
-		case common.RelayFormatOpenAIResponses:
-			if openAIResponsesRequest, ok := request.(*dto.OpenAIResponsesRequest); ok {
-				openAIResponsesRequest.Model = info.UpstreamModelName
-			}
-		case common.RelayFormatOpenAIAudio:
-			if openAIAudioRequest, ok := request.(*dto.AudioRequest); ok {
-				openAIAudioRequest.Model = info.UpstreamModelName
-			}
-		case common.RelayFormatOpenAIImage:
-			if imageRequest, ok := request.(*dto.ImageRequest); ok {
-				imageRequest.Model = info.UpstreamModelName
-			}
-		case common.RelayFormatRerank:
-			if rerankRequest, ok := request.(*dto.RerankRequest); ok {
-				rerankRequest.Model = info.UpstreamModelName
-			}
-		case common.RelayFormatEmbedding:
-			if embeddingRequest, ok := request.(*dto.EmbeddingRequest); ok {
-				embeddingRequest.Model = info.UpstreamModelName
-			}
-		default:
-			if openAIRequest, ok := request.(*dto.GeneralOpenAIRequest); ok {
-				openAIRequest.Model = info.UpstreamModelName
-			} else {
-				common2.LogWarn(c, fmt.Sprintf("model mapped but request type %T not supported", request))
-			}
+
+	if isResponsesCompact {
+		finalUpstreamModelName := mappingModelName
+		if info.IsModelMapped && info.UpstreamModelName != "" {
+			finalUpstreamModelName = info.UpstreamModelName
 		}
+		info.UpstreamModelName = finalUpstreamModelName
+		info.OriginModelName = ratio_setting.WithCompactModelSuffix(finalUpstreamModelName)
+	}
+	if request != nil {
+		request.SetModelName(info.UpstreamModelName)
 	}
 	return nil
 }

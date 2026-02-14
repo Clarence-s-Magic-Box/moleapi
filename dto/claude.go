@@ -3,8 +3,12 @@ package dto
 import (
 	"encoding/json"
 	"fmt"
-	"one-api/common"
-	"one-api/types"
+	"strings"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/types"
+
+	"github.com/gin-gonic/gin"
 )
 
 type ClaudeMetadata struct {
@@ -20,7 +24,7 @@ type ClaudeMediaMessage struct {
 	StopReason   *string              `json:"stop_reason,omitempty"`
 	PartialJson  *string              `json:"partial_json,omitempty"`
 	Role         string               `json:"role,omitempty"`
-	Thinking     string               `json:"thinking,omitempty"`
+	Thinking     *string              `json:"thinking,omitempty"`
 	Signature    string               `json:"signature,omitempty"`
 	Delta        string               `json:"delta,omitempty"`
 	CacheControl json.RawMessage      `json:"cache_control,omitempty"`
@@ -81,7 +85,7 @@ func (c *ClaudeMediaMessage) GetStringContent() string {
 }
 
 func (c *ClaudeMediaMessage) GetJsonRowString() string {
-	jsonContent, _ := json.Marshal(c)
+	jsonContent, _ := common.Marshal(c)
 	return string(jsonContent)
 }
 
@@ -144,6 +148,10 @@ func (c *ClaudeMessage) SetStringContent(content string) {
 	c.Content = content
 }
 
+func (c *ClaudeMessage) SetContent(content any) {
+	c.Content = content
+}
+
 func (c *ClaudeMessage) ParseContent() ([]ClaudeMediaMessage, error) {
 	return common.Any2Type[[]ClaudeMediaMessage](c.Content)
 }
@@ -192,11 +200,173 @@ type ClaudeRequest struct {
 	Temperature       *float64        `json:"temperature,omitempty"`
 	TopP              float64         `json:"top_p,omitempty"`
 	TopK              int             `json:"top_k,omitempty"`
-	//ClaudeMetadata    `json:"metadata,omitempty"`
-	Stream     bool      `json:"stream,omitempty"`
-	Tools      any       `json:"tools,omitempty"`
-	ToolChoice any       `json:"tool_choice,omitempty"`
-	Thinking   *Thinking `json:"thinking,omitempty"`
+	Stream            bool            `json:"stream,omitempty"`
+	Tools             any             `json:"tools,omitempty"`
+	ContextManagement json.RawMessage `json:"context_management,omitempty"`
+	OutputConfig      json.RawMessage `json:"output_config,omitempty"`
+	OutputFormat      json.RawMessage `json:"output_format,omitempty"`
+	Container         json.RawMessage `json:"container,omitempty"`
+	ToolChoice        any             `json:"tool_choice,omitempty"`
+	Thinking          *Thinking       `json:"thinking,omitempty"`
+	McpServers        json.RawMessage `json:"mcp_servers,omitempty"`
+	Metadata          json.RawMessage `json:"metadata,omitempty"`
+	// 服务层级字段，用于指定 API 服务等级。允许透传可能导致实际计费高于预期，默认应过滤
+	ServiceTier string `json:"service_tier,omitempty"`
+}
+
+// createClaudeFileSource 根据数据内容创建正确类型的 FileSource
+func createClaudeFileSource(data string) *types.FileSource {
+	if strings.HasPrefix(data, "http://") || strings.HasPrefix(data, "https://") {
+		return types.NewURLFileSource(data)
+	}
+	return types.NewBase64FileSource(data, "")
+}
+
+func (c *ClaudeRequest) GetTokenCountMeta() *types.TokenCountMeta {
+	var tokenCountMeta = types.TokenCountMeta{
+		TokenType: types.TokenTypeTokenizer,
+		MaxTokens: int(c.MaxTokens),
+	}
+
+	var texts = make([]string, 0)
+	var fileMeta = make([]*types.FileMeta, 0)
+
+	// system
+	if c.System != nil {
+		if c.IsStringSystem() {
+			sys := c.GetStringSystem()
+			if sys != "" {
+				texts = append(texts, sys)
+			}
+		} else {
+			systemMedia := c.ParseSystem()
+			for _, media := range systemMedia {
+				switch media.Type {
+				case "text":
+					texts = append(texts, media.GetText())
+				case "image":
+					if media.Source != nil {
+						data := media.Source.Url
+						if data == "" {
+							data = common.Interface2String(media.Source.Data)
+						}
+						if data != "" {
+							fileMeta = append(fileMeta, &types.FileMeta{
+								FileType: types.FileTypeImage,
+								Source:   createClaudeFileSource(data),
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// messages
+	for _, message := range c.Messages {
+		tokenCountMeta.MessagesCount++
+		texts = append(texts, message.Role)
+		if message.IsStringContent() {
+			content := message.GetStringContent()
+			if content != "" {
+				texts = append(texts, content)
+			}
+			continue
+		}
+
+		content, _ := message.ParseContent()
+		for _, media := range content {
+			switch media.Type {
+			case "text":
+				texts = append(texts, media.GetText())
+			case "image":
+				if media.Source != nil {
+					data := media.Source.Url
+					if data == "" {
+						data = common.Interface2String(media.Source.Data)
+					}
+					if data != "" {
+						fileMeta = append(fileMeta, &types.FileMeta{
+							FileType: types.FileTypeImage,
+							Source:   createClaudeFileSource(data),
+						})
+					}
+				}
+			case "tool_use":
+				if media.Name != "" {
+					texts = append(texts, media.Name)
+				}
+				if media.Input != nil {
+					b, _ := common.Marshal(media.Input)
+					texts = append(texts, string(b))
+				}
+			case "tool_result":
+				if media.Content != nil {
+					b, _ := common.Marshal(media.Content)
+					texts = append(texts, string(b))
+				}
+			}
+		}
+	}
+
+	// tools
+	if c.Tools != nil {
+		tools := c.GetTools()
+		normalTools, webSearchTools := ProcessTools(tools)
+		if normalTools != nil {
+			for _, t := range normalTools {
+				tokenCountMeta.ToolsCount++
+				if t.Name != "" {
+					texts = append(texts, t.Name)
+				}
+				if t.Description != "" {
+					texts = append(texts, t.Description)
+				}
+				if t.InputSchema != nil {
+					b, _ := common.Marshal(t.InputSchema)
+					texts = append(texts, string(b))
+				}
+			}
+		}
+		if webSearchTools != nil {
+			for _, t := range webSearchTools {
+				tokenCountMeta.ToolsCount++
+				if t.Name != "" {
+					texts = append(texts, t.Name)
+				}
+				if t.UserLocation != nil {
+					b, _ := common.Marshal(t.UserLocation)
+					texts = append(texts, string(b))
+				}
+			}
+		}
+	}
+
+	tokenCountMeta.CombineText = strings.Join(texts, "\n")
+	tokenCountMeta.Files = fileMeta
+	return &tokenCountMeta
+}
+
+func (c *ClaudeRequest) IsStream(ctx *gin.Context) bool {
+	return c.Stream
+}
+
+func (c *ClaudeRequest) SetModelName(modelName string) {
+	if modelName != "" {
+		c.Model = modelName
+	}
+}
+
+func (c *ClaudeRequest) SearchToolNameByToolCallId(toolCallId string) string {
+	for _, message := range c.Messages {
+		content, _ := message.ParseContent()
+		for _, mediaMessage := range content {
+			if mediaMessage.Id == toolCallId {
+				return mediaMessage.Name
+			}
+		}
+	}
+	return ""
 }
 
 // AddTool 添加工具到请求中
@@ -344,24 +514,57 @@ func (c *ClaudeResponse) GetClaudeError() *types.ClaudeError {
 	case string:
 		// 处理简单字符串错误
 		return &types.ClaudeError{
-			Type:    "error",
+			Type:    "upstream_error",
 			Message: err,
 		}
 	default:
 		// 未知类型，尝试转换为字符串
 		return &types.ClaudeError{
-			Type:    "unknown_error",
-			Message: fmt.Sprintf("%v", err),
+			Type:    "unknown_upstream_error",
+			Message: fmt.Sprintf("unknown_error: %v", err),
 		}
 	}
 }
 
 type ClaudeUsage struct {
-	InputTokens              int                  `json:"input_tokens"`
-	CacheCreationInputTokens int                  `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     int                  `json:"cache_read_input_tokens"`
-	OutputTokens             int                  `json:"output_tokens"`
-	ServerToolUse            *ClaudeServerToolUse `json:"server_tool_use"`
+	InputTokens              int                       `json:"input_tokens"`
+	CacheCreationInputTokens int                       `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int                       `json:"cache_read_input_tokens"`
+	OutputTokens             int                       `json:"output_tokens"`
+	CacheCreation            *ClaudeCacheCreationUsage `json:"cache_creation,omitempty"`
+	// claude cache 1h
+	ClaudeCacheCreation5mTokens int                  `json:"claude_cache_creation_5_m_tokens"`
+	ClaudeCacheCreation1hTokens int                  `json:"claude_cache_creation_1_h_tokens"`
+	ServerToolUse               *ClaudeServerToolUse `json:"server_tool_use,omitempty"`
+}
+
+type ClaudeCacheCreationUsage struct {
+	Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens,omitempty"`
+	Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens,omitempty"`
+}
+
+func (u *ClaudeUsage) GetCacheCreation5mTokens() int {
+	if u == nil || u.CacheCreation == nil {
+		return 0
+	}
+	return u.CacheCreation.Ephemeral5mInputTokens
+}
+
+func (u *ClaudeUsage) GetCacheCreation1hTokens() int {
+	if u == nil || u.CacheCreation == nil {
+		return 0
+	}
+	return u.CacheCreation.Ephemeral1hInputTokens
+}
+
+func (u *ClaudeUsage) GetCacheCreationTotalTokens() int {
+	if u == nil {
+		return 0
+	}
+	if u.CacheCreationInputTokens > 0 {
+		return u.CacheCreationInputTokens
+	}
+	return u.GetCacheCreation5mTokens() + u.GetCacheCreation1hTokens()
 }
 
 type ClaudeServerToolUse struct {

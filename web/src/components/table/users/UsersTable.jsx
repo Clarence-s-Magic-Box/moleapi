@@ -19,16 +19,19 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useMemo, useState } from 'react';
 import { Empty } from '@douyinfe/semi-ui';
-import CardTable from '../../common/ui/CardTable.js';
+import CardTable from '../../common/ui/CardTable';
 import {
   IllustrationNoResult,
-  IllustrationNoResultDark
+  IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { getUsersColumns } from './UsersColumnDefs';
 import PromoteUserModal from './modals/PromoteUserModal';
 import DemoteUserModal from './modals/DemoteUserModal';
 import EnableDisableUserModal from './modals/EnableDisableUserModal';
 import DeleteUserModal from './modals/DeleteUserModal';
+import ResetPasskeyModal from './modals/ResetPasskeyModal';
+import ResetTwoFAModal from './modals/ResetTwoFAModal';
+import UserSubscriptionsModal from './modals/UserSubscriptionsModal';
 
 const UsersTable = (usersData) => {
   const {
@@ -45,6 +48,8 @@ const UsersTable = (usersData) => {
     setShowEditUser,
     manageUser,
     refresh,
+    resetUserPasskey,
+    resetUserTwoFA,
     t,
   } = usersData;
 
@@ -55,6 +60,10 @@ const UsersTable = (usersData) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [modalUser, setModalUser] = useState(null);
   const [enableDisableAction, setEnableDisableAction] = useState('');
+  const [showResetPasskeyModal, setShowResetPasskeyModal] = useState(false);
+  const [showResetTwoFAModal, setShowResetTwoFAModal] = useState(false);
+  const [showUserSubscriptionsModal, setShowUserSubscriptionsModal] =
+    useState(false);
 
   // Modal handlers
   const showPromoteUserModal = (user) => {
@@ -78,6 +87,21 @@ const UsersTable = (usersData) => {
     setShowDeleteModal(true);
   };
 
+  const showResetPasskeyUserModal = (user) => {
+    setModalUser(user);
+    setShowResetPasskeyModal(true);
+  };
+
+  const showResetTwoFAUserModal = (user) => {
+    setModalUser(user);
+    setShowResetTwoFAModal(true);
+  };
+
+  const showUserSubscriptionsUserModal = (user) => {
+    setModalUser(user);
+    setShowUserSubscriptionsModal(true);
+  };
+
   // Modal confirm handlers
   const handlePromoteConfirm = () => {
     manageUser(modalUser.id, 'promote', modalUser);
@@ -94,6 +118,16 @@ const UsersTable = (usersData) => {
     setShowEnableDisableModal(false);
   };
 
+  const handleResetPasskeyConfirm = async () => {
+    await resetUserPasskey(modalUser);
+    setShowResetPasskeyModal(false);
+  };
+
+  const handleResetTwoFAConfirm = async () => {
+    await resetUserTwoFA(modalUser);
+    setShowResetTwoFAModal(false);
+  };
+
   // Get all columns
   const columns = useMemo(() => {
     return getUsersColumns({
@@ -103,23 +137,35 @@ const UsersTable = (usersData) => {
       showPromoteModal: showPromoteUserModal,
       showDemoteModal: showDemoteUserModal,
       showEnableDisableModal: showEnableDisableUserModal,
-      showDeleteModal: showDeleteUserModal
+      showDeleteModal: showDeleteUserModal,
+      showResetPasskeyModal: showResetPasskeyUserModal,
+      showResetTwoFAModal: showResetTwoFAUserModal,
+      showUserSubscriptionsModal: showUserSubscriptionsUserModal,
     });
   }, [
     t,
     setEditingUser,
     setShowEditUser,
+    showPromoteUserModal,
+    showDemoteUserModal,
+    showEnableDisableUserModal,
+    showDeleteUserModal,
+    showResetPasskeyUserModal,
+    showResetTwoFAUserModal,
+    showUserSubscriptionsUserModal,
   ]);
 
   // Handle compact mode by removing fixed positioning
   const tableColumns = useMemo(() => {
-    return compactMode ? columns.map(col => {
-      if (col.dataIndex === 'operate') {
-        const { fixed, ...rest } = col;
-        return rest;
-      }
-      return col;
-    }) : columns;
+    return compactMode
+      ? columns.map((col) => {
+          if (col.dataIndex === 'operate') {
+            const { fixed, ...rest } = col;
+            return rest;
+          }
+          return col;
+        })
+      : columns;
   }, [compactMode, columns]);
 
   return (
@@ -143,13 +189,15 @@ const UsersTable = (usersData) => {
         empty={
           <Empty
             image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
-            darkModeImage={<IllustrationNoResultDark style={{ width: 150, height: 150 }} />}
+            darkModeImage={
+              <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
+            }
             description={t('搜索无结果')}
             style={{ padding: 30 }}
           />
         }
-        className="overflow-hidden"
-        size="middle"
+        className='overflow-hidden'
+        size='middle'
       />
 
       {/* Modal components */}
@@ -188,8 +236,32 @@ const UsersTable = (usersData) => {
         manageUser={manageUser}
         t={t}
       />
+
+      <ResetPasskeyModal
+        visible={showResetPasskeyModal}
+        onCancel={() => setShowResetPasskeyModal(false)}
+        onConfirm={handleResetPasskeyConfirm}
+        user={modalUser}
+        t={t}
+      />
+
+      <ResetTwoFAModal
+        visible={showResetTwoFAModal}
+        onCancel={() => setShowResetTwoFAModal(false)}
+        onConfirm={handleResetTwoFAConfirm}
+        user={modalUser}
+        t={t}
+      />
+
+      <UserSubscriptionsModal
+        visible={showUserSubscriptionsModal}
+        onCancel={() => setShowUserSubscriptionsModal(false)}
+        user={modalUser}
+        t={t}
+        onSuccess={() => refresh?.()}
+      />
     </>
   );
 };
 
-export default UsersTable; 
+export default UsersTable;

@@ -3,14 +3,11 @@ package controller
 import (
 	"errors"
 	"fmt"
-	"one-api/common"
-	"one-api/constant"
-	"one-api/dto"
-	"one-api/middleware"
-	"one-api/model"
-	"one-api/setting"
-	"one-api/types"
-	"time"
+
+	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -32,29 +29,10 @@ func Playground(c *gin.Context) {
 		return
 	}
 
-	playgroundRequest := &dto.PlayGroundRequest{}
-	err := common.UnmarshalBodyReusable(c, playgroundRequest)
+	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatOpenAI, nil, nil)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 		return
-	}
-
-	if playgroundRequest.Model == "" {
-		newAPIError = types.NewError(errors.New("请选择模型"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
-		return
-	}
-	c.Set("original_model", playgroundRequest.Model)
-	group := playgroundRequest.Group
-	userGroup := c.GetString("group")
-
-	if group == "" {
-		group = userGroup
-	} else {
-		if !setting.GroupInUserUsableGroups(group) && group != userGroup {
-			newAPIError = types.NewError(errors.New("无权访问该分组"), types.ErrorCodeAccessDenied, types.ErrOptionWithSkipRetry())
-			return
-		}
-		c.Set("group", group)
 	}
 
 	userId := c.GetInt("id")
@@ -69,16 +47,10 @@ func Playground(c *gin.Context) {
 
 	tempToken := &model.Token{
 		UserId: userId,
-		Name:   fmt.Sprintf("playground-%s", group),
-		Group:  group,
+		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),
+		Group:  relayInfo.UsingGroup,
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
-	_, newAPIError = getChannel(c, group, playgroundRequest.Model, 0)
-	if newAPIError != nil {
-		return
-	}
-	//middleware.SetupContextForSelectedChannel(c, channel, playgroundRequest.Model)
-	common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
 
-	Relay(c)
+	Relay(c, types.RelayFormatOpenAI)
 }
