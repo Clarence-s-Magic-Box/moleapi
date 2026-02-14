@@ -13,8 +13,8 @@ one-api
 tiktoken_cache
 .eslintcache
 
-# Allow committing an empty placeholder so `go test`/`go build` doesn't fail
+# Allow committing a minimal placeholder so `go test`/`go build` doesn't fail
 # before the frontend build step populates `web/dist`.
 !web/dist/
 web/dist/*
-!web/dist/.gitkeep
+!web/dist/index.html
