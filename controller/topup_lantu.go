@@ -168,13 +168,16 @@ func LanTuPayNotify(c *gin.Context) {
 		mchId = c.PostForm("mch_id")
 	}
 
-	if outTradeNo == "" || mchId == "" {
+	cfg := GetLanTuPayConfig()
+	if cfg == nil {
 		c.String(http.StatusOK, "FAIL")
 		return
 	}
-
-	cfg := GetLanTuPayConfig()
-	if cfg == nil {
+	// Some callbacks may omit mch_id; fall back to configured value.
+	if mchId == "" {
+		mchId = cfg.MchId
+	}
+	if outTradeNo == "" {
 		c.String(http.StatusOK, "FAIL")
 		return
 	}
