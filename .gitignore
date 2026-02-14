@@ -12,3 +12,9 @@ one-api
 .DS_Store
 tiktoken_cache
 .eslintcache
+
+# Allow committing an empty placeholder so `go test`/`go build` doesn't fail
+# before the frontend build step populates `web/dist`.
+!web/dist/
+web/dist/*
+!web/dist/.gitkeep
