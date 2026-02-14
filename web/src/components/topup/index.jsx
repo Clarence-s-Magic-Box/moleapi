@@ -189,6 +189,11 @@ const TopUp = () => {
       if (amount === 0) {
         await getStripeAmount();
       }
+    } else if (payWay === 'lantu') {
+      // 蓝兔支付处理
+      if (amount === 0) {
+        await getAmount();
+      }
     } else {
       // 普通支付处理
       if (amount === 0) {
@@ -209,6 +214,12 @@ const TopUp = () => {
           amount: parseInt(topUpCount),
           payment_method: 'stripe',
         });
+      } else if (payWay === 'lantu') {
+        // 蓝兔支付请求
+        res = await API.post('/api/user/lantu/pay', {
+          amount: parseInt(topUpCount),
+          payment_method: 'lantu',
+        });
       } else {
         // 普通支付请求
         res = await API.post('/api/user/pay', {
@@ -222,6 +233,9 @@ const TopUp = () => {
         if (message === 'success') {
           if (payWay === 'stripe') {
             // Stripe 支付回调处理
+            window.open(data.pay_link, '_blank');
+          } else if (payWay === 'lantu') {
+            // 蓝兔支付回调处理（返回支付链接）
             window.open(data.pay_link, '_blank');
           } else {
             // 普通支付表单提交
@@ -425,6 +439,8 @@ const TopUp = () => {
                 if (method.type === 'alipay') {
                   method.color = 'rgba(var(--semi-blue-5), 1)';
                 } else if (method.type === 'wxpay') {
+                  method.color = 'rgba(var(--semi-green-5), 1)';
+                } else if (method.type === 'lantu') {
                   method.color = 'rgba(var(--semi-green-5), 1)';
                 } else if (method.type === 'stripe') {
                   method.color = 'rgba(var(--semi-purple-5), 1)';

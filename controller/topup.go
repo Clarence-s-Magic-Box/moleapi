@@ -23,8 +23,14 @@ import (
 )
 
 func GetTopUpInfo(c *gin.Context) {
-	// 获取支付方式
+	epayEnabled := operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != ""
+	lantuEnabled := common.LantuApiUrl != "" && common.LantuMchId != "" && common.LantuSecretKey != ""
+
+	// 获取支付方式（当 Epay 未启用时，不返回 Epay 相关方式，避免前端误用）
 	payMethods := operation_setting.PayMethods
+	if !epayEnabled {
+		payMethods = []map[string]string{}
+	}
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
 	if setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "" {
@@ -48,8 +54,27 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	// 如果启用了 蓝兔支付，添加到支付方法列表
+	if lantuEnabled {
+		hasLantu := false
+		for _, method := range payMethods {
+			if method["type"] == "lantu" {
+				hasLantu = true
+				break
+			}
+		}
+		if !hasLantu {
+			lantuMethod := map[string]string{
+				"name":  "蓝兔支付",
+				"type":  "lantu",
+				"color": "rgba(var(--semi-green-5), 1)",
+			}
+			payMethods = append(payMethods, lantuMethod)
+		}
+	}
+
 	data := gin.H{
-		"enable_online_topup": operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != "",
+		"enable_online_topup": epayEnabled || lantuEnabled,
 		"enable_stripe_topup": setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "",
 		"enable_creem_topup":  setting.CreemApiKey != "" && setting.CreemProducts != "[]",
 		"creem_products":      setting.CreemProducts,

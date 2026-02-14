@@ -68,6 +68,9 @@ func InitOptionMap() {
 	common.OptionMap["Footer"] = common.Footer
 	common.OptionMap["SystemName"] = common.SystemName
 	common.OptionMap["Logo"] = common.Logo
+	common.OptionMap["LantuApiUrl"] = common.LantuApiUrl
+	common.OptionMap["LantuMchId"] = common.LantuMchId
+	common.OptionMap["LantuSecretKey"] = common.LantuSecretKey
 	common.OptionMap["ServerAddress"] = ""
 	common.OptionMap["WorkerUrl"] = system_setting.WorkerUrl
 	common.OptionMap["WorkerValidKey"] = system_setting.WorkerValidKey
@@ -376,6 +379,12 @@ func updateOptionMap(key string, value string) (err error) {
 		common.SystemName = value
 	case "Logo":
 		common.Logo = value
+	case "LantuApiUrl":
+		common.LantuApiUrl = value
+	case "LantuMchId":
+		common.LantuMchId = value
+	case "LantuSecretKey":
+		common.LantuSecretKey = value
 	case "WeChatServerAddress":
 		common.WeChatServerAddress = value
 	case "WeChatServerToken":

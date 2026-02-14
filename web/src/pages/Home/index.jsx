@@ -63,6 +63,8 @@ import {
   Xinference,
 } from '@lobehub/icons';
 
+import './home.css';
+
 const { Text } = Typography;
 
 const Home = () => {
@@ -80,6 +82,20 @@ const Home = () => {
   const endpointItems = API_ENDPOINTS.map((e) => ({ value: e }));
   const [endpointIndex, setEndpointIndex] = useState(0);
   const isChinese = i18n.language.startsWith('zh');
+  const systemName = statusState?.status?.system_name || 'MoleAPI';
+
+  // 打字机效果相关状态
+  const [currentText, setCurrentText] = useState('');
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const slogans = [
+    t('一键接入，极致体验'),
+    t('统一接口，无缝切换'),
+    t('更优价格，更强兼容'),
+    t('简单配置，即刻使用'),
+    t('多模型聚合，一站服务'),
+  ];
 
   const displayHomePageContent = async () => {
     setHomePageContent(localStorage.getItem('home_page_content') || '');
@@ -141,12 +157,43 @@ const Home = () => {
     displayHomePageContent().then();
   }, []);
 
+  // 语言切换时重置打字机效果
+  useEffect(() => {
+    setCurrentText('');
+    setCurrentIndex(0);
+    setIsDeleting(false);
+  }, [i18n.language]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setEndpointIndex((prev) => (prev + 1) % endpointItems.length);
     }, 3000);
     return () => clearInterval(timer);
   }, [endpointItems.length]);
+
+  // 打字机效果
+  useEffect(() => {
+    const currentSlogan = slogans[currentIndex] || '';
+
+    const typewriterTimer = setTimeout(() => {
+      if (!isDeleting) {
+        if (currentText.length < currentSlogan.length) {
+          setCurrentText(currentSlogan.slice(0, currentText.length + 1));
+        } else {
+          setTimeout(() => setIsDeleting(true), 2000);
+        }
+      } else {
+        if (currentText.length > 0) {
+          setCurrentText(currentText.slice(0, -1));
+        } else {
+          setIsDeleting(false);
+          setCurrentIndex((prev) => (prev + 1) % slogans.length);
+        }
+      }
+    }, isDeleting ? 50 : 100);
+
+    return () => clearTimeout(typewriterTimer);
+  }, [currentText, currentIndex, isDeleting, slogans]);
 
   return (
     <div className='w-full overflow-x-hidden'>
@@ -160,8 +207,7 @@ const Home = () => {
           {/* Banner 部分 */}
           <div className='w-full border-b border-semi-color-border min-h-[500px] md:min-h-[600px] lg:min-h-[700px] relative overflow-x-hidden'>
             {/* 背景模糊晕染球 */}
-            <div className='blur-ball blur-ball-indigo' />
-            <div className='blur-ball blur-ball-teal' />
+            <div className='gradient-circle' />
             <div className='flex items-center justify-center h-full px-4 py-20 md:py-24 lg:py-32 mt-10'>
               {/* 居中内容区 */}
               <div className='flex flex-col items-center justify-center text-center max-w-4xl mx-auto'>
@@ -169,14 +215,16 @@ const Home = () => {
                   <h1
                     className={`text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-semi-color-text-0 leading-tight ${isChinese ? 'tracking-wide md:tracking-wider' : ''}`}
                   >
-                    <>
-                      {t('统一的')}
-                      <br />
-                      <span className='shine-text'>{t('大模型接口网关')}</span>
-                    </>
+                    <span className='shine-text'>{systemName}</span>
                   </h1>
-                  <p className='text-base md:text-lg lg:text-xl text-semi-color-text-1 mt-4 md:mt-6 max-w-xl'>
-                    {t('更好的价格，更好的稳定性，只需要将模型基址替换为：')}
+                  <h2 className='text-lg md:text-xl lg:text-2xl font-bold text-semi-color-text-1 mt-2 mb-4'>
+                    {t('统一的大模型网关接口')}
+                  </h2>
+                  <p className='text-sm md:text-base lg:text-lg text-semi-color-text-1 mt-4 md:mt-6 max-w-xl min-h-[1.5em] flex items-center justify-center'>
+                    <span className='typewriter-text'>
+                      {currentText}
+                      <span className='typewriter-cursor'>|</span>
+                    </span>
                   </p>
                   {/* BASE URL 与端点选择 */}
                   <div className='flex flex-col md:flex-row items-center justify-center gap-4 w-full mt-4 md:mt-6 max-w-md'>
