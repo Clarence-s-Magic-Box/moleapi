@@ -23,7 +23,7 @@ import ModelPricingTabs from './ModelPricingTabs.jsx';
 import ModelPricingFilters from './ModelPricingFilters.jsx';
 import ModelPricingTable from './ModelPricingTable.jsx';
 import ModelPricingHeader from './ModelPricingHeader.jsx';
-import { useModelPricingData } from '../../../hooks/model-pricing/useModelPricingData.js';
+import { useModelPricingData } from '../../../hooks/model-pricing/useModelPricingData';
 
 const ModelPricingPage = () => {
   const modelPricingData = useModelPricingData();

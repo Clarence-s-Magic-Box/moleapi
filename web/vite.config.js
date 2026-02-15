@@ -29,6 +29,16 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Semi-UI publishes the CSS file but doesn't export it via package "exports",
+      // so bundlers that respect exports (Vite/Rollup) refuse deep imports.
+      '@douyinfe/semi-ui/dist/css/semi.css': path.resolve(
+        __dirname,
+        './node_modules/@douyinfe/semi-ui/dist/css/semi.css',
+      ),
+      '@douyinfe/semi-ui/dist/css/semi.min.css': path.resolve(
+        __dirname,
+        './node_modules/@douyinfe/semi-ui/dist/css/semi.min.css',
+      ),
     },
   },
   plugins: [
