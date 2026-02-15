@@ -229,12 +229,14 @@ func InjectGoogleAnalytics() {
 func InitResources() error {
 	// Initialize resources here if needed
 	// This is a placeholder function for future resource initialization
-	err := godotenv.Load(".env")
-	if err != nil {
+	// Load environment files if present. `.env.local` overrides `.env`.
+	// This helps local dev without impacting production deployments.
+	if err := godotenv.Load(".env"); err != nil {
 		if common.DebugEnabled {
-			common.SysLog("No .env file found, using default environment variables. If needed, please create a .env file and set the relevant variables.")
+			common.SysLog("No .env file found, using process environment variables.")
 		}
 	}
+	_ = godotenv.Overload(".env.local")
 
 	// 加载环境变量
 	common.InitEnv()
