@@ -11,7 +11,7 @@ import (
 )
 
 var StartTime = time.Now().Unix() // unit: second
-var Version = "v0.8.1"            // this hard coding will be replaced automatically when building, no need to manually change
+var Version = "v0.10.9-alpha.6"   // this hard coding will be replaced automatically when building, no need to manually change
 var SystemName = "MoleAPI"
 var LantuApiUrl = ""
 var LantuMchId = ""
