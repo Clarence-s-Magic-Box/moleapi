@@ -231,7 +231,9 @@ func InitResources() error {
 	// This is a placeholder function for future resource initialization
 	// Load environment files if present. `.env.local` overrides `.env`.
 	// This helps local dev without impacting production deployments.
-	if err := godotenv.Load(".env"); err != nil {
+	var err error
+	err = godotenv.Load(".env")
+	if err != nil {
 		if common.DebugEnabled {
 			common.SysLog("No .env file found, using process environment variables.")
 		}
