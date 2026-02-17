@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -53,6 +54,24 @@ func GetTopUpByTradeNo(tradeNo string) *TopUp {
 		return nil
 	}
 	return topUp
+}
+
+func GenerateUniqueTopUpTradeNo(userId int) (string, error) {
+	if userId <= 0 {
+		return "", errors.New("invalid user id")
+	}
+	for i := 0; i < 8; i++ {
+		tradeNo := fmt.Sprintf("USR%dNO%s%s", userId, common.GetTimeString(), common.GetRandomString(4))
+		var count int64
+		if err := DB.Model(&TopUp{}).Where("trade_no = ?", tradeNo).Count(&count).Error; err != nil {
+			return "", err
+		}
+		if count == 0 {
+			return tradeNo, nil
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return "", errors.New("failed to generate unique topup trade no")
 }
 
 func Recharge(referenceId string, customerId string) (err error) {

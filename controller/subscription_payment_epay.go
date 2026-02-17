@@ -72,8 +72,11 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 
-	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
-	tradeNo = fmt.Sprintf("SUBUSR%dNO%s", userId, tradeNo)
+	tradeNo, err := model.GenerateUniqueSubscriptionTradeNo(userId)
+	if err != nil {
+		common.ApiErrorMsg(c, "创建订单失败")
+		return
+	}
 
 	client := GetEpayClient()
 	if client == nil {

@@ -229,6 +229,24 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 	return &order
 }
 
+func GenerateUniqueSubscriptionTradeNo(userId int) (string, error) {
+	if userId <= 0 {
+		return "", errors.New("invalid user id")
+	}
+	for i := 0; i < 8; i++ {
+		tradeNo := fmt.Sprintf("SUBUSR%dNO%s%s", userId, common.GetTimeString(), common.GetRandomString(4))
+		var count int64
+		if err := DB.Model(&SubscriptionOrder{}).Where("trade_no = ?", tradeNo).Count(&count).Error; err != nil {
+			return "", err
+		}
+		if count == 0 {
+			return tradeNo, nil
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return "", errors.New("failed to generate unique subscription trade no")
+}
+
 // User subscription instance
 type UserSubscription struct {
 	Id     int `json:"id"`

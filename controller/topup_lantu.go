@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -81,8 +81,11 @@ func RequestLanTuPay(c *gin.Context) {
 	}
 
 	// trade no aligns with Epay formatting, so logs/search feel consistent.
-	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
-	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
+	tradeNo, err := model.GenerateUniqueTopUpTradeNo(id)
+	if err != nil {
+		c.JSON(200, gin.H{"message": "error", "data": "创建订单失败"})
+		return
+	}
 
 	// notify url should be reachable by LanTu platform
 	callBackAddress := service.GetCallbackAddress()

@@ -250,6 +250,9 @@ func InitLogDB() (err error) {
 func migrateDB() error {
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
+	if err := normalizeDuplicateTradeNos(); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -293,6 +296,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	if err := normalizeDuplicateTradeNos(); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 
@@ -367,6 +373,127 @@ func migrateLOGDB() error {
 		return err
 	}
 	return nil
+}
+
+type duplicateTradeNo struct {
+	TradeNo string `gorm:"column:trade_no"`
+	Count   int64  `gorm:"column:cnt"`
+}
+
+type tradeNoRow struct {
+	ID      int    `gorm:"column:id"`
+	TradeNo string `gorm:"column:trade_no"`
+	Status  string `gorm:"column:status"`
+}
+
+// normalizeDuplicateTradeNos repairs legacy duplicated trade_no values
+// before unique indexes are enforced by AutoMigrate.
+func normalizeDuplicateTradeNos() error {
+	if err := normalizeDuplicateTradeNosForTable(&TopUp{}, "top_ups"); err != nil {
+		return err
+	}
+	if err := normalizeDuplicateTradeNosForTable(&SubscriptionOrder{}, "subscription_orders"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func normalizeDuplicateTradeNosForTable(model interface{}, tableName string) error {
+	if !DB.Migrator().HasTable(model) {
+		return nil
+	}
+
+	var duplicates []duplicateTradeNo
+	err := DB.Table(tableName).
+		Select("trade_no, COUNT(1) AS cnt").
+		Where("trade_no IS NOT NULL").
+		Group("trade_no").
+		Having("COUNT(1) > 1").
+		Scan(&duplicates).Error
+	if err != nil {
+		return err
+	}
+	if len(duplicates) == 0 {
+		return nil
+	}
+
+	common.SysLog(fmt.Sprintf("detected %d duplicated trade_no groups in %s, repairing", len(duplicates), tableName))
+	for _, duplicate := range duplicates {
+		var rows []tradeNoRow
+		if err = DB.Table(tableName).
+			Select("id, trade_no, status").
+			Where("trade_no = ?", duplicate.TradeNo).
+			Order("id ASC").
+			Scan(&rows).Error; err != nil {
+			return err
+		}
+		if len(rows) <= 1 {
+			continue
+		}
+
+		keepIndex := pickTradeNoKeepIndex(rows)
+		for i := 0; i < len(rows); i++ {
+			if i == keepIndex {
+				continue
+			}
+			newTradeNo, genErr := buildUniqueMigratedTradeNo(tableName, rows[i].TradeNo, rows[i].ID)
+			if genErr != nil {
+				return genErr
+			}
+			if err = DB.Table(tableName).Where("id = ?", rows[i].ID).Update("trade_no", newTradeNo).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func buildUniqueMigratedTradeNo(tableName string, oldTradeNo string, rowID int) (string, error) {
+	base := strings.TrimSpace(oldTradeNo)
+	if base == "" {
+		base = "MIGTRADE"
+	}
+	for attempt := 0; attempt < 10; attempt++ {
+		candidate := buildMigratedTradeNoCandidate(base, rowID, attempt)
+		var count int64
+		err := DB.Table(tableName).
+			Where("trade_no = ? AND id <> ?", candidate, rowID).
+			Count(&count).Error
+		if err != nil {
+			return "", err
+		}
+		if count == 0 {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("failed to generate unique migrated trade_no for %s id=%d", tableName, rowID)
+}
+
+func buildMigratedTradeNoCandidate(base string, rowID int, attempt int) string {
+	suffix := fmt.Sprintf("-MIG-%d", rowID)
+	if attempt > 0 {
+		suffix = fmt.Sprintf("-MIG-%d-%d", rowID, attempt)
+	}
+	maxBaseLen := 255 - len(suffix)
+	if maxBaseLen < 1 {
+		return fmt.Sprintf("MIG-%d", rowID)
+	}
+	if len(base) > maxBaseLen {
+		base = base[:maxBaseLen]
+	}
+	return base + suffix
+}
+
+func pickTradeNoKeepIndex(rows []tradeNoRow) int {
+	// Default: keep latest row to preserve the newest record mapping.
+	keepIndex := len(rows) - 1
+	// If any pending order exists, keep the latest pending one unchanged.
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i].Status == common.TopUpStatusPending {
+			return i
+		}
+	}
+	return keepIndex
 }
 
 type sqliteColumnDef struct {
