@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { IconFile, IconInfoCircle } from '@douyinfe/semi-icons';
+import { IconIntro, IconModal, IconTag } from '@douyinfe/semi-icons-lab';
 import SkeletonWrapper from '../components/SkeletonWrapper';
 
 const Navigation = ({
@@ -28,16 +30,44 @@ const Navigation = ({
   userState,
   pricingRequireAuth,
 }) => {
-  const renderNavLinks = () => {
-    const baseClasses =
-      'flex-shrink-0 flex items-center gap-1 font-semibold rounded-md transition-all duration-200 ease-in-out';
-    const hoverClasses = 'hover:text-semi-color-primary';
-    const spacingClasses = isMobile ? 'p-1' : 'p-2';
+  const getNavIcon = (itemKey) => {
+    switch (itemKey) {
+      case 'home':
+        return (
+          <IconIntro className='text-blue-500 transition-colors duration-300 hover:text-blue-600' />
+        );
+      case 'console':
+        return (
+          <IconModal className='text-sky-500 transition-colors duration-300 hover:text-sky-600' />
+        );
+      case 'pricing':
+        return (
+          <IconTag className='text-red-500 transition-colors duration-300 hover:text-red-600' />
+        );
+      case 'docs':
+        return (
+          <IconFile className='text-amber-500 transition-colors duration-300 hover:text-amber-600' />
+        );
+      case 'about':
+        return (
+          <IconInfoCircle className='text-emerald-500 transition-colors duration-300 hover:text-emerald-600' />
+        );
+      default:
+        return null;
+    }
+  };
 
-    const commonLinkClasses = `${baseClasses} ${spacingClasses} ${hoverClasses}`;
+  const renderNavLinks = () => {
+    const commonLinkClasses = 'nav-link-item';
 
     return mainNavLinks.map((link) => {
-      const linkContent = <span>{link.text}</span>;
+      const icon = getNavIcon(link.itemKey);
+      const linkContent = (
+        <>
+          {icon && <span className='nav-link-icon'>{icon}</span>}
+          <span className='nav-link-text'>{link.text}</span>
+        </>
+      );
 
       if (link.isExternal) {
         return (

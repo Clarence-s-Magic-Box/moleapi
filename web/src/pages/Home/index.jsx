@@ -32,12 +32,8 @@ import { StatusContext } from '../../context/Status';
 import { useActualTheme } from '../../context/Theme';
 import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
-import {
-  IconGithubLogo,
-  IconPlay,
-  IconFile,
-  IconCopy,
-} from '@douyinfe/semi-icons';
+import { IconGithubLogo, IconCopy } from '@douyinfe/semi-icons';
+import { IconTag, IconColorPlatte } from '@douyinfe/semi-icons-lab';
 import { Link } from 'react-router-dom';
 import NoticeModal from '../../components/layout/NoticeModal';
 import {
@@ -76,7 +72,6 @@ const Home = () => {
   const [noticeVisible, setNoticeVisible] = useState(false);
   const isMobile = useIsMobile();
   const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
-  const docsLink = statusState?.status?.docs_link || '';
   const serverAddress =
     statusState?.status?.server_address || `${window.location.origin}`;
   const endpointItems = API_ENDPOINTS.map((e) => ({ value: e }));
@@ -175,22 +170,25 @@ const Home = () => {
   useEffect(() => {
     const currentSlogan = slogans[currentIndex] || '';
 
-    const typewriterTimer = setTimeout(() => {
-      if (!isDeleting) {
-        if (currentText.length < currentSlogan.length) {
-          setCurrentText(currentSlogan.slice(0, currentText.length + 1));
+    const typewriterTimer = setTimeout(
+      () => {
+        if (!isDeleting) {
+          if (currentText.length < currentSlogan.length) {
+            setCurrentText(currentSlogan.slice(0, currentText.length + 1));
+          } else {
+            setTimeout(() => setIsDeleting(true), 2000);
+          }
         } else {
-          setTimeout(() => setIsDeleting(true), 2000);
+          if (currentText.length > 0) {
+            setCurrentText(currentText.slice(0, -1));
+          } else {
+            setIsDeleting(false);
+            setCurrentIndex((prev) => (prev + 1) % slogans.length);
+          }
         }
-      } else {
-        if (currentText.length > 0) {
-          setCurrentText(currentText.slice(0, -1));
-        } else {
-          setIsDeleting(false);
-          setCurrentIndex((prev) => (prev + 1) % slogans.length);
-        }
-      }
-    }, isDeleting ? 50 : 100);
+      },
+      isDeleting ? 50 : 100,
+    );
 
     return () => clearTimeout(typewriterTimer);
   }, [currentText, currentIndex, isDeleting, slogans]);
@@ -267,9 +265,11 @@ const Home = () => {
                       type='primary'
                       size={isMobile ? 'default' : 'large'}
                       className='!rounded-3xl px-8 py-2'
-                      icon={<IconPlay />}
+                      icon={
+                        <IconColorPlatte style={{ pointerEvents: 'none' }} />
+                      }
                     >
-                      {t('获取密钥')}
+                      {t('免费试用')}
                     </Button>
                   </Link>
                   {isDemoSiteMode && statusState?.status?.version ? (
@@ -287,16 +287,15 @@ const Home = () => {
                       {statusState.status.version}
                     </Button>
                   ) : (
-                    docsLink && (
+                    <Link to='/pricing'>
                       <Button
                         size={isMobile ? 'default' : 'large'}
                         className='flex items-center !rounded-3xl px-6 py-2'
-                        icon={<IconFile />}
-                        onClick={() => window.open(docsLink, '_blank')}
+                        icon={<IconTag style={{ pointerEvents: 'none' }} />}
                       >
-                        {t('文档')}
+                        {t('了解价格')}
                       </Button>
-                    )
+                    </Link>
                   )}
                 </div>
 

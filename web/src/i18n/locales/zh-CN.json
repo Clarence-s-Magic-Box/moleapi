@@ -2796,6 +2796,9 @@
     "缓存读": "缓存读",
     "缓存写": "缓存写",
     "写": "写",
-    "根据 Anthropic 协定，/v1/messages 的输入 tokens 仅统计非缓存输入，不包含缓存读取与缓存写入 tokens。": "根据 Anthropic 协定，/v1/messages 的输入 tokens 仅统计非缓存输入，不包含缓存读取与缓存写入 tokens。"
+    "根据 Anthropic 协定，/v1/messages 的输入 tokens 仅统计非缓存输入，不包含缓存读取与缓存写入 tokens。": "根据 Anthropic 协定，/v1/messages 的输入 tokens 仅统计非缓存输入，不包含缓存读取与缓存写入 tokens。",
+    "免费试用": "免费试用",
+    "了解价格": "了解价格",
+    "定价": "定价"
   }
 }

@@ -44,6 +44,8 @@ const TopUp = () => {
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState] = useContext(StatusContext);
 
+  const LEGACY_PRESET_AMOUNTS = [1, 3, 7, 15, 35, 70, 140, 280];
+
   const [redemptionCode, setRedemptionCode] = useState('');
   const [amount, setAmount] = useState(0.0);
   const [minTopUp, setMinTopUp] = useState(statusState?.status?.min_topup || 1);
@@ -98,12 +100,126 @@ const TopUp = () => {
   // 预设充值额度选项
   const [presetAmounts, setPresetAmounts] = useState([]);
   const [selectedPreset, setSelectedPreset] = useState(null);
+  const [presetPayAmountMap, setPresetPayAmountMap] = useState({});
 
   // 充值配置信息
   const [topupInfo, setTopupInfo] = useState({
     amount_options: [],
+    bonus: {},
     discount: {},
   });
+
+  // 当前用户的充值分组倍率（由 /api/user/topup/info 下发；普通用户无权读取 /api/option）
+  const [topupGroupRatio, setTopupGroupRatio] = useState(1);
+
+  const getBonusRateForAmount = (bonusMap, amountValue) => {
+    if (!bonusMap) return 0;
+    // 后端可能返回 string（历史/配置兼容），这里做一次兜底解析
+    if (typeof bonusMap === 'string') {
+      try {
+        bonusMap = JSON.parse(bonusMap);
+      } catch (e) {
+        return 0;
+      }
+    }
+    const amount = Number(amountValue);
+    if (!Number.isFinite(amount)) return 0;
+
+    const direct = bonusMap[amount];
+    if (typeof direct === 'number' && direct > 0) return direct;
+
+    // Tier matching: take the highest key <= amount.
+    const keys = Object.keys(bonusMap)
+      .map((k) => Number(k))
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => a - b);
+    let best = 0;
+    for (const k of keys) {
+      if (k <= amount) {
+        const v = Number(bonusMap[k]);
+        if (Number.isFinite(v) && v > 0) best = v;
+      }
+    }
+    return best;
+  };
+
+  const parseBonusMap = (rawBonus) => {
+    if (!rawBonus) return {};
+    if (typeof rawBonus === 'string') {
+      try {
+        const parsed = JSON.parse(rawBonus);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (e) {
+        return {};
+      }
+    }
+    return typeof rawBonus === 'object' ? rawBonus : {};
+  };
+
+  const parseDiscountMap = (rawDiscount) => {
+    if (!rawDiscount) return {};
+    if (typeof rawDiscount === 'string') {
+      try {
+        const parsed = JSON.parse(rawDiscount);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (e) {
+        return {};
+      }
+    }
+    return typeof rawDiscount === 'object' ? rawDiscount : {};
+  };
+
+  const convertDiscountToBonusMap = (discountMap) => {
+    const converted = {};
+    Object.keys(discountMap || {}).forEach((amountKey) => {
+      const discount = Number(discountMap[amountKey]);
+      if (!Number.isFinite(discount) || discount <= 0) return;
+      const bonusRate = 1 / discount - 1;
+      if (Number.isFinite(bonusRate) && bonusRate > 0) {
+        converted[Number(amountKey)] = Number(bonusRate.toFixed(4));
+      }
+    });
+    return converted;
+  };
+
+  const fetchPresetPayAmountMap = async (presets) => {
+    const amounts = Array.from(
+      new Set(
+        (presets || [])
+          .map((item) => Number(item?.value))
+          .filter((v) => Number.isFinite(v) && v > 0),
+      ),
+    );
+    if (amounts.length === 0) {
+      setPresetPayAmountMap({});
+      return;
+    }
+
+    const entries = await Promise.all(
+      amounts.map(async (amountValue) => {
+        try {
+          const res = await API.post('/api/user/amount', {
+            amount: parseFloat(amountValue),
+          });
+          if (res?.data?.message === 'success') {
+            const value = Number(res.data.data);
+            return [amountValue, Number.isFinite(value) ? value : null];
+          }
+        } catch (e) {
+          // ignore individual preset amount failures
+        }
+        return [amountValue, null];
+      }),
+    );
+
+    const nextMap = {};
+    entries.forEach(([amountValue, payAmount]) => {
+      if (Number.isFinite(payAmount)) {
+        nextMap[amountValue] = payAmount;
+      }
+    });
+    setPresetPayAmountMap(nextMap);
+  };
 
   const topUp = async () => {
     if (redemptionCode === '') {
@@ -400,10 +516,20 @@ const TopUp = () => {
       const res = await API.get('/api/user/topup/info');
       const { message, data, success } = res.data;
       if (success) {
+        const parsedDiscount = parseDiscountMap(data.discount || {});
+        let parsedBonus = parseBonusMap(data.bonus || {});
+        if (Object.keys(parsedBonus).length === 0) {
+          parsedBonus = convertDiscountToBonusMap(parsedDiscount);
+        }
         setTopupInfo({
           amount_options: data.amount_options || [],
-          discount: data.discount || {},
+          bonus: parsedBonus || {},
+          discount: parsedDiscount || {},
         });
+        const ratioNum = Number(data.topup_group_ratio);
+        setTopupGroupRatio(
+          Number.isFinite(ratioNum) && ratioNum > 0 ? ratioNum : 1,
+        );
 
         // 处理支付方式
         let payMethods = data.pay_methods || [];
@@ -474,33 +600,48 @@ const TopUp = () => {
 
           // 设置 Creem 产品
           try {
-            console.log(' data is ?', data);
-            console.log(' creem products is ?', data.creem_products);
             const products = JSON.parse(data.creem_products || '[]');
             setCreemProducts(products);
           } catch (e) {
             setCreemProducts([]);
           }
 
-          // 如果没有自定义充值数量选项，根据最小充值金额生成预设充值额度选项
-          if (topupInfo.amount_options.length === 0) {
-            setPresetAmounts(generatePresetAmounts(minTopUpValue));
-          }
+          // 预设充值档位：
+          // 1) 优先后端自定义 amount_options
+          // 2) 否则使用 0.8.1 版本的稳定档位（过滤掉小于最小充值的项）
+          // 3) 若过滤后为空，再回退到按倍数生成
+          const options =
+            Array.isArray(data.amount_options) && data.amount_options.length > 0
+              ? data.amount_options
+              : LEGACY_PRESET_AMOUNTS;
+          const normalized = options
+            .map((n) => Number(n))
+            .filter((n) => Number.isFinite(n) && n > 0)
+            .filter((n) => n >= Number(minTopUpValue || 1));
+          const fallback =
+            normalized.length > 0 ? normalized : generatePresetAmounts(minTopUpValue).map((x) => x.value);
+          const bonusMap = parsedBonus || {};
+          const customPresets = fallback.map((amount) => ({
+            value: amount,
+            bonus: getBonusRateForAmount(bonusMap, amount),
+          }));
+          setPresetAmounts(customPresets);
+          fetchPresetPayAmountMap(customPresets);
+
+          // 尽量选中一个“稳定档位”，让展示更接近 0.8.1
+          const initSelected =
+            customPresets.find((p) => p.value === minTopUpValue) ||
+            customPresets.find((p) => p.value >= minTopUpValue) ||
+            null;
+          const initialAmount = initSelected?.value || minTopUpValue;
+          setTopUpCount(initialAmount);
+          setSelectedPreset(initSelected ? initSelected.value : null);
 
           // 初始化显示实付金额
-          getAmount(minTopUpValue);
+          getAmount(initialAmount);
         } catch (e) {
           console.log('解析支付方式失败:', e);
           setPayMethods([]);
-        }
-
-        // 如果有自定义充值数量选项，使用它们替换默认的预设选项
-        if (data.amount_options && data.amount_options.length > 0) {
-          const customPresets = data.amount_options.map((amount) => ({
-            value: amount,
-            discount: data.discount[amount] || 1.0,
-          }));
-          setPresetAmounts(customPresets);
         }
       } else {
         console.error('获取充值配置失败:', data);
@@ -579,6 +720,9 @@ const TopUp = () => {
   }, [statusState?.status]);
 
   const renderAmount = () => {
+    if (amount === 0) {
+      return t('计算中...');
+    }
     return amount + ' ' + t('元');
   };
 
@@ -660,11 +804,9 @@ const TopUp = () => {
   const selectPresetAmount = (preset) => {
     setTopUpCount(preset.value);
     setSelectedPreset(preset.value);
-
-    // 计算实际支付金额，考虑折扣
-    const discount = preset.discount || topupInfo.discount[preset.value] || 1.0;
-    const discountedAmount = preset.value * priceRatio * discount;
-    setAmount(discountedAmount);
+    setAmount(0);
+    // 触发金额计算以获取准确的支付金额（包含分组倍率等后端逻辑）
+    getAmount(preset.value);
   };
 
   // 格式化大数字显示
@@ -703,13 +845,13 @@ const TopUp = () => {
         handleCancel={handleCancel}
         confirmLoading={confirmLoading}
         topUpCount={topUpCount}
-        renderQuotaWithAmount={renderQuotaWithAmount}
+        renderQuota={renderQuota}
         amountLoading={amountLoading}
         renderAmount={renderAmount}
         payWay={payWay}
         payMethods={payMethods}
-        amountNumber={amount}
-        discountRate={topupInfo?.discount?.[topUpCount] || 1.0}
+        bonusRate={getBonusRateForAmount(topupInfo?.bonus, topUpCount)}
+        groupRatio={topupGroupRatio}
       />
 
       {/* 充值账单模态框 */}
@@ -748,58 +890,64 @@ const TopUp = () => {
       </Modal>
 
       {/* 主布局区域 */}
-      <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
-        <RechargeCard
-          t={t}
-          enableOnlineTopUp={enableOnlineTopUp}
-          enableStripeTopUp={enableStripeTopUp}
-          enableCreemTopUp={enableCreemTopUp}
-          creemProducts={creemProducts}
-          creemPreTopUp={creemPreTopUp}
-          presetAmounts={presetAmounts}
-          selectedPreset={selectedPreset}
-          selectPresetAmount={selectPresetAmount}
-          formatLargeNumber={formatLargeNumber}
-          priceRatio={priceRatio}
-          topUpCount={topUpCount}
-          minTopUp={minTopUp}
-          renderQuotaWithAmount={renderQuotaWithAmount}
-          getAmount={getAmount}
-          setTopUpCount={setTopUpCount}
-          setSelectedPreset={setSelectedPreset}
-          renderAmount={renderAmount}
-          amountLoading={amountLoading}
-          payMethods={payMethods}
-          preTopUp={preTopUp}
-          paymentLoading={paymentLoading}
-          payWay={payWay}
-          redemptionCode={redemptionCode}
-          setRedemptionCode={setRedemptionCode}
-          topUp={topUp}
-          isSubmitting={isSubmitting}
-          topUpLink={topUpLink}
-          openTopUpLink={openTopUpLink}
-          userState={userState}
-          renderQuota={renderQuota}
-          statusLoading={statusLoading}
-          topupInfo={topupInfo}
-          onOpenHistory={handleOpenHistory}
-          subscriptionLoading={subscriptionLoading}
-          subscriptionPlans={subscriptionPlans}
-          billingPreference={billingPreference}
-          onChangeBillingPreference={updateBillingPreference}
-          activeSubscriptions={activeSubscriptions}
-          allSubscriptions={allSubscriptions}
-          reloadSubscriptionSelf={getSubscriptionSelf}
-        />
-        <InvitationCard
-          t={t}
-          userState={userState}
-          renderQuota={renderQuota}
-          setOpenTransfer={setOpenTransfer}
-          affLink={affLink}
-          handleAffLinkClick={handleAffLinkClick}
-        />
+      <div className='grid grid-cols-1 lg:grid-cols-12 gap-6'>
+        <div className='lg:col-span-7'>
+          <RechargeCard
+            t={t}
+            enableOnlineTopUp={enableOnlineTopUp}
+            enableStripeTopUp={enableStripeTopUp}
+            enableCreemTopUp={enableCreemTopUp}
+            creemProducts={creemProducts}
+            creemPreTopUp={creemPreTopUp}
+            presetAmounts={presetAmounts}
+            selectedPreset={selectedPreset}
+            selectPresetAmount={selectPresetAmount}
+            formatLargeNumber={formatLargeNumber}
+            priceRatio={priceRatio}
+            topUpCount={topUpCount}
+            minTopUp={minTopUp}
+            renderQuotaWithAmount={renderQuotaWithAmount}
+            getAmount={getAmount}
+            setTopUpCount={setTopUpCount}
+            setSelectedPreset={setSelectedPreset}
+            renderAmount={renderAmount}
+            amountLoading={amountLoading}
+            payMethods={payMethods}
+            preTopUp={preTopUp}
+            paymentLoading={paymentLoading}
+            payWay={payWay}
+            redemptionCode={redemptionCode}
+            setRedemptionCode={setRedemptionCode}
+            topUp={topUp}
+            isSubmitting={isSubmitting}
+            topUpLink={topUpLink}
+            openTopUpLink={openTopUpLink}
+            userState={userState}
+            renderQuota={renderQuota}
+            statusLoading={statusLoading}
+            topupInfo={topupInfo}
+            topupGroupRatio={topupGroupRatio}
+            onOpenHistory={handleOpenHistory}
+            subscriptionLoading={subscriptionLoading}
+            subscriptionPlans={subscriptionPlans}
+            billingPreference={billingPreference}
+            onChangeBillingPreference={updateBillingPreference}
+            activeSubscriptions={activeSubscriptions}
+            allSubscriptions={allSubscriptions}
+            reloadSubscriptionSelf={getSubscriptionSelf}
+            presetPayAmountMap={presetPayAmountMap}
+          />
+        </div>
+        <div className='lg:col-span-5'>
+          <InvitationCard
+            t={t}
+            userState={userState}
+            renderQuota={renderQuota}
+            setOpenTransfer={setOpenTransfer}
+            affLink={affLink}
+            handleAffLinkClick={handleAffLinkClick}
+          />
+        </div>
       </div>
     </div>
   );

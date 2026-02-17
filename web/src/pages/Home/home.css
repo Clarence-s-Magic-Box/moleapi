@@ -4,11 +4,19 @@
   width: 200px;
   height: 200px;
   border-radius: 50%;
-  background: conic-gradient(from 0deg, var(--semi-color-primary), var(--semi-color-secondary), var(--semi-color-tertiary), var(--semi-color-info), var(--semi-color-warning), var(--semi-color-danger));
+  background: conic-gradient(
+    from 0deg,
+    var(--semi-color-primary),
+    var(--semi-color-secondary),
+    var(--semi-color-tertiary),
+    var(--semi-color-info),
+    var(--semi-color-warning),
+    var(--semi-color-danger)
+  );
   background-size: 200% 200%;
   animation: rotateGradient 15s linear infinite;
   z-index: 0;
-  top: 20%;
+  top: 30%;
   left: 50%;
   transform: translate(-50%, -50%);
   opacity: 0.5;
@@ -22,7 +30,12 @@
   width: 125px;
   height: 125px;
   border-radius: 50%;
-  background: conic-gradient(from 180deg, var(--semi-color-warning), var(--semi-color-info), var(--semi-color-primary));
+  background: conic-gradient(
+    from 180deg,
+    var(--semi-color-warning),
+    var(--semi-color-info),
+    var(--semi-color-primary)
+  );
   background-size: 200% 200%;
   animation: rotateGradient 20s linear infinite reverse;
   top: 150%;
@@ -57,7 +70,7 @@
   .gradient-circle {
     width: 125px;
     height: 125px;
-    top: 18%;
+    top: 24%;
     left: 50%;
     filter: blur(25px);
   }
@@ -69,7 +82,7 @@
     left: 20%;
     filter: blur(20px);
   }
-}/* 
+} /* 
 打字机效果样式 */
 .typewriter-text {
   display: inline-block;
@@ -85,10 +98,12 @@
 }
 
 @keyframes blink {
-  0%, 50% {
+  0%,
+  50% {
     opacity: 1;
   }
-  51%, 100% {
+  51%,
+  100% {
     opacity: 0;
   }
 }

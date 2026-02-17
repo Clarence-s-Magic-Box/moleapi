@@ -574,45 +574,42 @@ code {
 }
 
 /* ==================== 未读通知闪光效果 ==================== */
-@keyframes sweep-shine {
-  0% {
-    background-position: 200% 0;
-  }
-
-  100% {
-    background-position: -200% 0;
-  }
-}
-
 .shine-text {
-  background: linear-gradient(
-    90deg,
-    currentColor 0%,
-    currentColor 40%,
-    rgba(255, 255, 255, 0.9) 50%,
-    currentColor 60%,
-    currentColor 100%
+  color: transparent;
+  background-image: linear-gradient(
+    -225deg,
+    rgba(64, 64, 64, 0.6) 0%,
+    rgba(59, 130, 246, 0.9) 20%,
+    rgba(37, 99, 235, 1) 35%,
+    rgba(99, 102, 241, 1) 50%,
+    rgba(139, 92, 246, 1) 65%,
+    rgba(59, 130, 246, 0.9) 80%,
+    rgba(64, 64, 64, 0.6) 100%
   );
-  background-size: 200% 100%;
+  background-size: 200% 120%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: sweep-shine 4s linear infinite;
+  animation: masked-animation 30s infinite linear;
 }
 
 .dark .shine-text {
-  background: linear-gradient(
-    90deg,
-    currentColor 0%,
-    currentColor 40%,
-    #facc15 50%,
-    currentColor 60%,
-    currentColor 100%
+  color: transparent;
+  background-image: linear-gradient(
+    -225deg,
+    rgba(156, 163, 175, 0.7) 0%,
+    rgba(96, 165, 250, 0.9) 20%,
+    rgba(59, 130, 246, 1) 35%,
+    rgba(129, 140, 248, 1) 50%,
+    rgba(168, 85, 247, 1) 65%,
+    rgba(96, 165, 250, 0.9) 80%,
+    rgba(156, 163, 175, 0.7) 100%
   );
-  background-size: 200% 100%;
+  background-size: 200% 120%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  animation: masked-animation 30s infinite linear;
 }
 
 /* ==================== ScrollList 定制样式 ==================== */
@@ -874,4 +871,133 @@ html.dark .with-pastel-balls::before {
 .semi-button,
 .semi-datepicker-range-input {
   border-radius: 10px !important;
+}
+
+/* ==================== 品牌名渐变文字样式 ==================== */
+.sidebar-title {
+  color: transparent;
+  font-weight: bold;
+  background-image: linear-gradient(
+    -225deg,
+    rgba(30, 30, 30, 0.8) 0%,
+    rgba(22, 73, 238, 0.8) 15%,
+    #1649ee 25%,
+    #cd97e6 48%,
+    #ee6552 60%,
+    #7419c7 75%,
+    rgba(116, 25, 199, 0.8) 85%,
+    rgba(30, 30, 30, 0.8) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  font-size: 1.5rem;
+  background-size: 200% 120%;
+  animation: masked-animation 10s infinite linear;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  line-height: 1;
+}
+
+@keyframes masked-animation {
+  0% {
+    background-position: 300% 0;
+  }
+  100% {
+    background-position: -300% 0;
+  }
+}
+
+/* ==================== 顶部导航菜单样式 ==================== */
+.nav-link-item {
+  border-radius: 12px !important;
+  margin: 0 1px !important;
+  padding: 6px 12px !important;
+  transition: all 0.3s ease !important;
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  text-decoration: none !important;
+  color: var(--semi-color-text-0) !important;
+}
+
+.nav-link-item:hover {
+  color: var(--semi-color-primary) !important;
+  transform: translateY(-1px) !important;
+}
+
+.nav-link-item:hover::before {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  right: 2px;
+  height: calc(100% - 4px);
+  background-color: var(--semi-color-primary-light-default);
+  border-radius: 10px;
+  z-index: -1;
+  transition: all 0.3s ease;
+  opacity: 1;
+}
+
+.nav-link-item::before {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  right: 2px;
+  height: calc(100% - 4px);
+  background-color: var(--semi-color-primary-light-default);
+  border-radius: 10px;
+  z-index: -1;
+  transition: all 0.3s ease;
+  opacity: 0;
+}
+
+.nav-link-icon {
+  font-size: 16px !important;
+  transition: all 0.3s ease !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.nav-link-item:hover .nav-link-icon {
+  transform: scale(1.1) !important;
+}
+
+.nav-link-text {
+  transition: all 0.3s ease !important;
+  position: relative !important;
+  z-index: 1 !important;
+  line-height: 1 !important;
+}
+
+.nav-link-item-mobile {
+  border-radius: 8px !important;
+  margin: 0 !important;
+  padding: 10px 16px !important;
+  width: 100% !important;
+  transition: all 0.3s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+  color: var(--semi-color-text-0) !important;
+}
+
+.nav-link-item-mobile:hover {
+  background-color: var(--semi-color-fill-1) !important;
+  color: var(--semi-color-primary) !important;
+}
+
+.dark .nav-link-item:hover::before {
+  background-color: rgba(var(--semi-blue-5), 0.2) !important;
+}
+
+.dark .nav-link-item-mobile:hover {
+  background-color: rgba(var(--semi-blue-5), 0.2) !important;
 }
