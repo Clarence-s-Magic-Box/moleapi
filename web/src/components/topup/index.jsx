@@ -28,7 +28,7 @@ import {
   copy,
   getQuotaPerUnit,
 } from '../../helpers';
-import { Modal, Toast } from '@douyinfe/semi-ui';
+import { Button, Modal, Toast, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
@@ -42,6 +42,7 @@ import TopupHistoryModal from './modals/TopupHistoryModal';
 
 const TopUp = () => {
   const { t } = useTranslation();
+  const { Text } = Typography;
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState] = useContext(StatusContext);
 
@@ -85,6 +86,7 @@ const TopUp = () => {
   const [lantuPayUrl, setLantuPayUrl] = useState('');
   const [lantuPayUrlKind, setLantuPayUrlKind] = useState('');
   const [lantuTradeNo, setLantuTradeNo] = useState('');
+  const [lantuPayMoney, setLantuPayMoney] = useState('');
   const [lantuCountdown, setLantuCountdown] = useState(0);
   const [lantuPolling, setLantuPolling] = useState(false);
 
@@ -375,6 +377,13 @@ const TopUp = () => {
               setLantuPayUrl(data.pay_link || '');
               setLantuPayUrlKind(data.pay_link_kind || '');
               setLantuTradeNo(data.trade_no || '');
+              setLantuPayMoney(
+                typeof data.pay_money === 'string'
+                  ? data.pay_money
+                  : amount
+                    ? String(amount)
+                    : '',
+              );
               setLantuPayModalOpen(true);
               setLantuPolling(true);
             } else {
@@ -753,6 +762,7 @@ const TopUp = () => {
     setLantuPayUrl('');
     setLantuPayUrlKind('');
     setLantuTradeNo('');
+    setLantuPayMoney('');
     setLantuCountdown(0);
   };
 
@@ -766,7 +776,6 @@ const TopUp = () => {
           clearInterval(timer);
           setLantuPayModalOpen(false);
           setLantuPolling(false);
-          showError(t('订单已过期'));
           return 0;
         }
         return prev - 1;
@@ -951,44 +960,68 @@ const TopUp = () => {
 
       {/* 蓝兔支付二维码模态框（桌面端 native） */}
       <Modal
-        title={t('微信扫码支付')}
+        title={t('微信支付')}
         visible={lantuPayModalOpen}
         onCancel={handleLantuPayCancel}
         maskClosable={false}
         centered
-        footer={null}
+        size='small'
+        footer={
+          <Button type='primary' onClick={handleLantuPayCancel}>
+            {t('我已支付完成')}
+          </Button>
+        }
       >
-        <div className='flex flex-col items-center gap-3'>
-          <div className='text-sm text-slate-600 dark:text-slate-300'>
-            {t('请使用微信扫码完成支付')} · {t('剩余')} {lantuCountdown}s
-          </div>
+        <div className='space-y-4 text-center'>
           {lantuPayUrl ? (
             lantuPayUrlKind === 'qr_text' ||
             (!lantuPayUrlKind &&
               /^weixin:\/\//i.test(String(lantuPayUrl || ''))) ? (
-              <QRCodeSVG value={lantuPayUrl} size={220} />
+              <div className='flex justify-center'>
+                <QRCodeSVG value={lantuPayUrl} size={200} />
+              </div>
             ) : (
               <img
                 src={lantuPayUrl}
-                alt='qrcode'
-                style={{
-                  width: 220,
-                  height: 220,
-                  borderRadius: 12,
-                  border: '1px solid rgba(148, 163, 184, 0.35)',
-                }}
+                alt={t('支付二维码')}
+                style={{ maxWidth: '200px', margin: '0 auto' }}
+                className='block mx-auto'
               />
             )
           ) : (
-            <div className='text-sm text-slate-600 dark:text-slate-300'>
+            <Text type='tertiary' className='block'>
               {t('二维码加载中...')}
-            </div>
+            </Text>
           )}
-          {lantuTradeNo ? (
-            <div className='text-xs text-slate-500 dark:text-slate-400'>
-              {t('订单号')}：{lantuTradeNo}
+
+          <Text type='tertiary' className='block'>
+            {t('微信扫一扫，或长按识别二维码')}
+          </Text>
+
+          {lantuPayMoney ? (
+            <div className='flex justify-between items-center border-t pt-2'>
+              <Text strong>{t('实付金额')}：</Text>
+              <Text type='danger' strong>
+                ¥{lantuPayMoney}
+              </Text>
             </div>
           ) : null}
+
+          <Text type='warning' className='block'>
+            {t('订单将在')}{' '}
+            {Math.floor(lantuCountdown / 60)}:
+            {(lantuCountdown % 60).toString().padStart(2, '0')} {t('后失效')}
+          </Text>
+
+          {lantuTradeNo ? (
+            <Text type='tertiary' className='text-xs'>
+              {t('订单号')}：{lantuTradeNo}
+            </Text>
+          ) : null}
+
+          <Text type='tertiary' className='text-xs'>
+            {t('支付后点击"我已支付完成"，在日志页即可查看充值详情')}
+          </Text>
         </div>
       </Modal>
 

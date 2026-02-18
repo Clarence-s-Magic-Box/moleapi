@@ -206,6 +206,8 @@ func RequestLanTuPay(c *gin.Context) {
 		"data": gin.H{
 			"pay_link":      payLink,
 			"pay_link_kind": payLinkKind, // "qr_image" | "qr_text" | "url"
+			// Helpful for QR modal verification; aligns with upstream total_fee (2 decimals).
+			"pay_money": paramsToSign["total_fee"],
 			"trade_no": tradeNo,
 			// Helps debugging upstream issues (safe to ignore on frontend).
 			"request_id": reqID,

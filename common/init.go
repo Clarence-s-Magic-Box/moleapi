@@ -35,6 +35,13 @@ func InitEnv() {
 	if envVersion != "" {
 		Version = envVersion
 	}
+	envCommit := strings.TrimSpace(os.Getenv("COMMIT_SHA"))
+	if envCommit == "" {
+		envCommit = strings.TrimSpace(os.Getenv("GIT_COMMIT"))
+	}
+	if envCommit != "" {
+		Commit = envCommit
+	}
 
 	if *PrintVersion {
 		fmt.Println(Version)

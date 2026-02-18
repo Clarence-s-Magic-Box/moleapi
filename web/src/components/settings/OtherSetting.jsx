@@ -352,6 +352,14 @@ const OtherSetting = () => {
                   </Text>
                 </Col>
               </Row>
+              <Row>
+                <Col span={16}>
+                  <Text copyable>
+                    {t('Commit版本')}：
+                    {statusState?.status?.commit || t('未知')}
+                  </Text>
+                </Col>
+              </Row>
             </Form.Section>
           </Card>
         </Form>

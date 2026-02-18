@@ -12,6 +12,8 @@ import (
 
 var StartTime = time.Now().Unix() // unit: second
 var Version = "v0.10.9-alpha.6"   // this hard coding will be replaced automatically when building, no need to manually change
+// Commit is the build git commit SHA (typically short). It can be injected via ldflags or env.
+var Commit = ""
 var SystemName = "MoleAPI"
 var LantuApiUrl = ""
 var LantuMchId = ""

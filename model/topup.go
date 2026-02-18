@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -17,12 +18,34 @@ type TopUp struct {
 	Id            int     `json:"id"`
 	UserId        int     `json:"user_id" gorm:"index"`
 	Amount        int64   `json:"amount"`
+	// AmountDisplay is a computed field for UI display:
+	// - pending/expired: base amount
+	// - success: includes current topup bonus rate
+	AmountDisplay string `json:"amount_display" gorm:"-"`
 	Money         float64 `json:"money"`
 	TradeNo       string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod string  `json:"payment_method" gorm:"type:varchar(50)"`
 	CreateTime    int64   `json:"create_time"`
 	CompleteTime  int64   `json:"complete_time"`
 	Status        string  `json:"status"`
+}
+
+func (topUp *TopUp) FillAmountDisplay() {
+	if topUp == nil {
+		return
+	}
+	if topUp.Amount == 0 {
+		topUp.AmountDisplay = "0"
+		return
+	}
+	d := decimal.NewFromInt(topUp.Amount)
+	if topUp.Status == common.TopUpStatusSuccess {
+		bonusRate := operation_setting.GetTopupBonusRate(topUp.Amount)
+		d = d.Mul(decimal.NewFromFloat(1.0 + bonusRate))
+	}
+	s := d.StringFixed(2)
+	s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+	topUp.AmountDisplay = s
 }
 
 func (topUp *TopUp) Insert() error {
@@ -204,6 +227,9 @@ func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, tota
 		return nil, 0, err
 	}
 
+	for _, t := range topups {
+		t.FillAmountDisplay()
+	}
 	return topups, total, nil
 }
 
@@ -233,6 +259,9 @@ func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err 
 		return nil, 0, err
 	}
 
+	for _, t := range topups {
+		t.FillAmountDisplay()
+	}
 	return topups, total, nil
 }
 
@@ -267,6 +296,9 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 	if err = tx.Commit().Error; err != nil {
 		return nil, 0, err
 	}
+	for _, t := range topups {
+		t.FillAmountDisplay()
+	}
 	return topups, total, nil
 }
 
@@ -300,6 +332,9 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp
 
 	if err = tx.Commit().Error; err != nil {
 		return nil, 0, err
+	}
+	for _, t := range topups {
+		t.FillAmountDisplay()
 	}
 	return topups, total, nil
 }

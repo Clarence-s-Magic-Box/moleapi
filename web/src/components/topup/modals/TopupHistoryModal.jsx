@@ -174,26 +174,30 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         key: 'payment_method',
         render: renderPaymentMethod,
       },
-      {
-        title: t('充值额度'),
-        dataIndex: 'amount',
-        key: 'amount',
-        render: (amount, record) => {
-          if (isSubscriptionTopup(record)) {
-            return (
-              <Tag color='purple' shape='circle' size='small'>
-                {t('订阅套餐')}
-              </Tag>
-            );
-          }
-          return (
-            <span className='flex items-center gap-1'>
-              <Coins size={16} />
-              <Text>{amount}</Text>
-            </span>
-          );
-        },
-      },
+          {
+            title: t('充值额度'),
+            dataIndex: 'amount',
+            key: 'amount',
+            render: (amount, record) => {
+              if (isSubscriptionTopup(record)) {
+                return (
+                  <Tag color='purple' shape='circle' size='small'>
+                    {t('订阅套餐')}
+                  </Tag>
+                );
+              }
+              const displayAmount =
+                record?.amount_display !== undefined && record?.amount_display !== null
+                  ? record.amount_display
+                  : amount;
+              return (
+                <span className='flex items-center gap-1'>
+                  <Coins size={16} />
+                  <Text>{displayAmount}</Text>
+                </span>
+              );
+            },
+          },
       {
         title: t('支付金额'),
         dataIndex: 'money',
