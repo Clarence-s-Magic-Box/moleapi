@@ -124,8 +124,9 @@ export default function SettingsPaymentGatewayLantu(props) {
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
               <Form.Input
                 field='LantuApiUrl'
-                label={t('蓝兔支付地址')}
-                placeholder={t('例如：https://yourdomain.com')}
+                label={t('蓝兔支付 API 地址')}
+                placeholder={t('例如：https://api.ltzf.cn')}
+                extraText={t('填写蓝兔支付平台 API 域名，不要填写本站域名（例如 https://test.moerapi.com）')}
               />
             </Col>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>

@@ -48,6 +48,37 @@ func GetLanTuPayConfig() *LanTuConfig {
 	}
 }
 
+func validateLanTuApiBase(c *gin.Context, apiBase string) error {
+	u, err := url.Parse(apiBase)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return errors.New("蓝兔支付地址配置错误：请填写蓝兔支付 API 地址，例如 https://api.ltzf.cn")
+	}
+
+	// A common misconfiguration is to paste this site's URL (ServerAddress) as "LanTuApiUrl".
+	selfHosts := make([]string, 0, 3)
+	if system_setting.ServerAddress != "" {
+		if su, err := url.Parse(system_setting.ServerAddress); err == nil && su.Hostname() != "" {
+			selfHosts = append(selfHosts, su.Hostname())
+		}
+	}
+	if cb := service.GetCallbackAddress(); cb != "" {
+		if cu, err := url.Parse(cb); err == nil && cu.Hostname() != "" {
+			selfHosts = append(selfHosts, cu.Hostname())
+		}
+	}
+	if c != nil && c.Request != nil && c.Request.Host != "" {
+		selfHosts = append(selfHosts, strings.Split(c.Request.Host, ":")[0])
+	}
+
+	for _, h := range selfHosts {
+		if h != "" && strings.EqualFold(u.Hostname(), h) {
+			return errors.New("蓝兔支付地址配置错误：不要填写本站地址，应填写蓝兔支付 API 地址，例如 https://api.ltzf.cn")
+		}
+	}
+
+	return nil
+}
+
 // RequestLanTuPay creates a LanTu WeChat H5 payment and returns the pay link.
 // It is designed to be consumed by the current frontend flow (open link in new tab).
 func RequestLanTuPay(c *gin.Context) {
@@ -64,6 +95,10 @@ func RequestLanTuPay(c *gin.Context) {
 	cfg := GetLanTuPayConfig()
 	if cfg == nil {
 		c.JSON(200, gin.H{"message": "error", "data": "当前管理员未配置蓝兔支付信息"})
+		return
+	}
+	if err := validateLanTuApiBase(c, cfg.ApiBase); err != nil {
+		c.JSON(200, gin.H{"message": "error", "data": err.Error()})
 		return
 	}
 
@@ -248,7 +283,11 @@ func lanTuDoPay(ctx *gin.Context, params map[string]string, endpoint string) (pa
 	}
 	payload := strings.NewReader(strings.Join(formData, "&"))
 
-	req, _ := http.NewRequest("POST", endpoint, payload)
+	req, err := http.NewRequest("POST", endpoint, payload)
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("LanTu pay build request failed: endpoint=%s err=%v", endpoint, err))
+		return "", "", errors.New("调起支付失败")
+	}
 	req.Header.Add("content-type", "application/x-www-form-urlencoded")
 
 	res, err := http.DefaultClient.Do(req)
@@ -348,7 +387,10 @@ func lanTuCheckPaid(cfg *LanTuConfig, mchId, outTradeNo string) (bool, error) {
 	payload := strings.NewReader(formData)
 
 	endpointUrl := common.BuildURL(cfg.ApiBase, lanTuGetOrderPath)
-	req, _ := http.NewRequest("POST", endpointUrl, payload)
+	req, err := http.NewRequest("POST", endpointUrl, payload)
+	if err != nil {
+		return false, err
+	}
 	req.Header.Add("content-type", "application/x-www-form-urlencoded")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
