@@ -74,6 +74,10 @@ func isMobileUserAgent(ua string) bool {
 	if strings.Contains(ua, "windows phone") {
 		return true
 	}
+	// WeChat in-app browser should use H5 jump mode.
+	if strings.Contains(ua, "micromessenger") {
+		return true
+	}
 	return false
 }
 
@@ -191,7 +195,7 @@ func RequestLanTuPay(c *gin.Context) {
 		endpointPath = lanTuJumpH5Path
 	}
 
-	payLink, reqID, err := lanTuDoPay(c, params, common.BuildURL(cfg.ApiBase, endpointPath))
+	payLink, payLinkKind, reqID, err := lanTuDoPay(c, params, common.BuildURL(cfg.ApiBase, endpointPath))
 	if err != nil {
 		c.JSON(200, gin.H{"message": "error", "data": err.Error()})
 		return
@@ -200,7 +204,8 @@ func RequestLanTuPay(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"message": "success",
 		"data": gin.H{
-			"pay_link": payLink,
+			"pay_link":      payLink,
+			"pay_link_kind": payLinkKind, // "qr_image" | "qr_text" | "url"
 			"trade_no": tradeNo,
 			// Helps debugging upstream issues (safe to ignore on frontend).
 			"request_id": reqID,
@@ -326,7 +331,7 @@ func GetLanTuOrderStatus(c *gin.Context) {
 	})
 }
 
-func lanTuDoPay(ctx *gin.Context, params map[string]string, endpoint string) (payLink string, requestID string, err error) {
+func lanTuDoPay(ctx *gin.Context, params map[string]string, endpoint string) (payLink string, payLinkKind string, requestID string, err error) {
 	formData := make([]string, 0, len(params))
 	for k, v := range params {
 		formData = append(formData, k+"="+url.QueryEscape(v))
@@ -336,13 +341,13 @@ func lanTuDoPay(ctx *gin.Context, params map[string]string, endpoint string) (pa
 	req, err := http.NewRequest("POST", endpoint, payload)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("LanTu pay build request failed: endpoint=%s err=%v", endpoint, err))
-		return "", "", errors.New("调起支付失败")
+		return "", "", "", errors.New("调起支付失败")
 	}
 	req.Header.Add("content-type", "application/x-www-form-urlencoded")
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", "", errors.New("调起支付失败")
+		return "", "", "", errors.New("调起支付失败")
 	}
 	defer res.Body.Close()
 
@@ -350,7 +355,7 @@ func lanTuDoPay(ctx *gin.Context, params map[string]string, endpoint string) (pa
 	var result map[string]interface{}
 	if err := common.Unmarshal(body, &result); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("LanTu pay response json parse failed: endpoint=%s status=%s body=%q err=%v", endpoint, res.Status, string(body), err))
-		return "", "", errors.New("支付响应解析失败")
+		return "", "", "", errors.New("支付响应解析失败")
 	}
 
 	code := strings.TrimSpace(fmt.Sprintf("%v", result["code"]))
@@ -379,22 +384,24 @@ func lanTuDoPay(ctx *gin.Context, params map[string]string, endpoint string) (pa
 		if reqID != "" {
 			msg = fmt.Sprintf("%s (request_id=%s)", msg, reqID)
 		}
-		return "", reqID, errors.New(msg)
+		return "", "", reqID, errors.New(msg)
 	}
 
 	dataVal, ok := result["data"]
 	if !ok || dataVal == nil {
 		logger.LogError(ctx, fmt.Sprintf("LanTu pay response missing data: endpoint=%s status=%s body=%q", endpoint, res.Status, string(body)))
 		if reqID != "" {
-			return "", reqID, errors.New("支付响应缺少 data (request_id=" + reqID + ")")
+			return "", "", reqID, errors.New("支付响应缺少 data (request_id=" + reqID + ")")
 		}
-		return "", reqID, errors.New("支付响应缺少 data")
+		return "", "", reqID, errors.New("支付响应缺少 data")
 	}
 
 	var link string
+	var linkKey string
 	switch v := dataVal.(type) {
 	case string:
 		link = strings.TrimSpace(v)
+		linkKey = "data"
 	case map[string]interface{}:
 		// Some deployments return object payloads (e.g. order_url / QRcode_url); prefer a URL-like field.
 		candidates := []string{"QRcode_url", "qrcode_url", "order_url", "pay_url", "url", "h5_url", "jump_url", "code_url"}
@@ -403,21 +410,36 @@ func lanTuDoPay(ctx *gin.Context, params map[string]string, endpoint string) (pa
 				s := strings.TrimSpace(fmt.Sprintf("%v", vv))
 				if s != "" && s != "<nil>" {
 					link = s
+					linkKey = k
 					break
 				}
 			}
 		}
 	default:
 		link = strings.TrimSpace(fmt.Sprintf("%v", dataVal))
+		linkKey = "data"
 	}
 	if link == "" {
 		logger.LogError(ctx, fmt.Sprintf("LanTu pay response empty data: endpoint=%s status=%s body=%q", endpoint, res.Status, string(body)))
 		if reqID != "" {
-			return "", reqID, errors.New("支付链接为空 (request_id=" + reqID + ")")
+			return "", "", reqID, errors.New("支付链接为空 (request_id=" + reqID + ")")
 		}
-		return "", reqID, errors.New("支付链接为空")
+		return "", "", reqID, errors.New("支付链接为空")
 	}
-	return link, reqID, nil
+
+	kind := "url"
+	switch linkKey {
+	case "QRcode_url", "qrcode_url":
+		kind = "qr_image"
+	case "code_url":
+		kind = "qr_text"
+	default:
+		if strings.HasPrefix(strings.ToLower(link), "weixin://") {
+			kind = "qr_text"
+		}
+	}
+
+	return link, kind, reqID, nil
 }
 
 func lanTuCheckPaid(cfg *LanTuConfig, mchId, outTradeNo string) (bool, error) {

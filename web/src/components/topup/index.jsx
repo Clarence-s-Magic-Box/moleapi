@@ -32,6 +32,7 @@ import { Modal, Toast } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
+import { QRCodeSVG } from 'qrcode.react';
 
 import RechargeCard from './RechargeCard';
 import InvitationCard from './InvitationCard';
@@ -82,6 +83,7 @@ const TopUp = () => {
   // LanTu (WeChat) QR modal + polling (desktop native pay)
   const [lantuPayModalOpen, setLantuPayModalOpen] = useState(false);
   const [lantuPayUrl, setLantuPayUrl] = useState('');
+  const [lantuPayUrlKind, setLantuPayUrlKind] = useState('');
   const [lantuTradeNo, setLantuTradeNo] = useState('');
   const [lantuCountdown, setLantuCountdown] = useState(0);
   const [lantuPolling, setLantuPolling] = useState(false);
@@ -345,6 +347,11 @@ const TopUp = () => {
         res = await API.post('/api/user/lantu/pay', {
           amount: parseInt(topUpCount),
           payment_method: 'lantu',
+          client: /MicroMessenger|Android|iPhone|iPod|iPad|Windows Phone|Mobile/i.test(
+            navigator.userAgent || '',
+          )
+            ? 'h5'
+            : 'native',
         });
       } else {
         // 普通支付请求
@@ -366,6 +373,7 @@ const TopUp = () => {
               window.location.href = data.pay_link;
             } else if (data?.client === 'native') {
               setLantuPayUrl(data.pay_link || '');
+              setLantuPayUrlKind(data.pay_link_kind || '');
               setLantuTradeNo(data.trade_no || '');
               setLantuPayModalOpen(true);
               setLantuPolling(true);
@@ -743,6 +751,7 @@ const TopUp = () => {
     setLantuPayModalOpen(false);
     setLantuPolling(false);
     setLantuPayUrl('');
+    setLantuPayUrlKind('');
     setLantuTradeNo('');
     setLantuCountdown(0);
   };
@@ -954,16 +963,22 @@ const TopUp = () => {
             {t('请使用微信扫码完成支付')} · {t('剩余')} {lantuCountdown}s
           </div>
           {lantuPayUrl ? (
-            <img
-              src={lantuPayUrl}
-              alt='qrcode'
-              style={{
-                width: 220,
-                height: 220,
-                borderRadius: 12,
-                border: '1px solid rgba(148, 163, 184, 0.35)',
-              }}
-            />
+            lantuPayUrlKind === 'qr_text' ||
+            (!lantuPayUrlKind &&
+              /^weixin:\/\//i.test(String(lantuPayUrl || ''))) ? (
+              <QRCodeSVG value={lantuPayUrl} size={220} />
+            ) : (
+              <img
+                src={lantuPayUrl}
+                alt='qrcode'
+                style={{
+                  width: 220,
+                  height: 220,
+                  borderRadius: 12,
+                  border: '1px solid rgba(148, 163, 184, 0.35)',
+                }}
+              />
+            )
           ) : (
             <div className='text-sm text-slate-600 dark:text-slate-300'>
               {t('二维码加载中...')}
