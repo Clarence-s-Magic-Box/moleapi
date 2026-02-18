@@ -29,7 +29,6 @@ import {
 const { Text } = Typography;
 import {
   API,
-  removeTrailingSlash,
   showError,
   showSuccess,
 } from '../../../helpers';
@@ -39,7 +38,6 @@ export default function SettingsPaymentGatewayLantu(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
-    LantuApiUrl: '',
     LantuMchId: '',
     LantuSecretKey: '',
   });
@@ -48,7 +46,6 @@ export default function SettingsPaymentGatewayLantu(props) {
   useEffect(() => {
     if (props.options && formApiRef.current) {
       const currentInputs = {
-        LantuApiUrl: props.options.LantuApiUrl || '',
         LantuMchId: props.options.LantuMchId || '',
         LantuSecretKey: props.options.LantuSecretKey || '',
       };
@@ -71,9 +68,6 @@ export default function SettingsPaymentGatewayLantu(props) {
     try {
       const options = [];
 
-      if (inputs.LantuApiUrl !== '') {
-        options.push({ key: 'LantuApiUrl', value: removeTrailingSlash(inputs.LantuApiUrl) });
-      }
       if (inputs.LantuMchId !== '') {
         options.push({ key: 'LantuMchId', value: inputs.LantuMchId });
       }
@@ -116,19 +110,11 @@ export default function SettingsPaymentGatewayLantu(props) {
       >
         <Form.Section text={t('蓝兔支付设置')}>
           <Text>
-            {t('（蓝兔支付接口配置，默认支持微信支付）')}
+            {t('（仅需配置商户信息；回调地址使用“服务器地址/自定义回调地址”设置）')}
           </Text>
           <Row
             gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
           >
-            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
-              <Form.Input
-                field='LantuApiUrl'
-                label={t('蓝兔支付 API 地址')}
-                placeholder={t('例如：https://api.ltzf.cn')}
-                extraText={t('填写蓝兔支付平台 API 域名，不要填写本站域名（例如 https://test.moerapi.com）')}
-              />
-            </Col>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
               <Form.Input
                 field='LantuMchId'

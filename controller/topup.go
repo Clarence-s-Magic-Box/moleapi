@@ -24,7 +24,8 @@ import (
 
 func GetTopUpInfo(c *gin.Context) {
 	epayEnabled := operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != ""
-	lantuEnabled := common.LantuApiUrl != "" && common.LantuMchId != "" && common.LantuSecretKey != ""
+	// LanTu upstream base is fixed; enabling only depends on merchant config.
+	lantuEnabled := common.LantuMchId != "" && common.LantuSecretKey != ""
 
 	// 获取支付方式（当 Epay 未启用时，不返回 Epay 相关方式，避免前端误用）
 	payMethods := operation_setting.PayMethods
