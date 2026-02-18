@@ -79,6 +79,13 @@ const TopUp = () => {
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [payMethods, setPayMethods] = useState([]);
 
+  // LanTu (WeChat) QR modal + polling (desktop native pay)
+  const [lantuPayModalOpen, setLantuPayModalOpen] = useState(false);
+  const [lantuPayUrl, setLantuPayUrl] = useState('');
+  const [lantuTradeNo, setLantuTradeNo] = useState('');
+  const [lantuCountdown, setLantuCountdown] = useState(0);
+  const [lantuPolling, setLantuPolling] = useState(false);
+
   const affFetchedRef = useRef(false);
 
   // 邀请相关状态
@@ -354,8 +361,18 @@ const TopUp = () => {
             // Stripe 支付回调处理
             window.open(data.pay_link, '_blank');
           } else if (payWay === 'lantu') {
-            // 蓝兔支付回调处理（返回支付链接）
-            window.open(data.pay_link, '_blank');
+            // 蓝兔支付：移动端 H5 直接跳转；桌面端展示二维码并轮询订单状态
+            if (data?.client === 'h5') {
+              window.location.href = data.pay_link;
+            } else if (data?.client === 'native') {
+              setLantuPayUrl(data.pay_link || '');
+              setLantuTradeNo(data.trade_no || '');
+              setLantuPayModalOpen(true);
+              setLantuPolling(true);
+            } else {
+              // Backward compatible fallback
+              window.open(data.pay_link, '_blank');
+            }
           } else {
             // 普通支付表单提交
             let params = data;
@@ -722,6 +739,72 @@ const TopUp = () => {
     }
   }, [statusState?.status]);
 
+  const handleLantuPayCancel = () => {
+    setLantuPayModalOpen(false);
+    setLantuPolling(false);
+    setLantuPayUrl('');
+    setLantuTradeNo('');
+    setLantuCountdown(0);
+  };
+
+  // LanTu native pay countdown (5 minutes)
+  useEffect(() => {
+    if (!lantuPayModalOpen) return;
+    setLantuCountdown(300);
+    const timer = setInterval(() => {
+      setLantuCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setLantuPayModalOpen(false);
+          setLantuPolling(false);
+          showError(t('订单已过期'));
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lantuPayModalOpen]);
+
+  // LanTu native pay status polling
+  useEffect(() => {
+    let interval;
+    if (!lantuPolling || !lantuPayModalOpen || !lantuTradeNo) return;
+    interval = setInterval(async () => {
+      try {
+        const res = await API.get(
+          `/api/user/lantu/status?trade_no=${encodeURIComponent(lantuTradeNo)}`,
+        );
+        const { message, status } = res.data || {};
+        if (message !== 'success') {
+          setLantuPayModalOpen(false);
+          setLantuPolling(false);
+          showError(t('获取订单状态失败'));
+          return;
+        }
+        if (status === 'success') {
+          setLantuPayModalOpen(false);
+          setLantuPolling(false);
+          showSuccess(t('充值成功'));
+          getUserQuota().then();
+          return;
+        }
+        if (status === 'expired') {
+          setLantuPayModalOpen(false);
+          setLantuPolling(false);
+          showError(t('订单已过期'));
+          return;
+        }
+        // pending -> keep polling
+      } catch (e) {
+        // keep polling; do not close modal on transient failures
+      }
+    }, 10000);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [lantuPolling, lantuPayModalOpen, lantuTradeNo]);
+
   const renderAmount = () => {
     if (amount === 0) {
       return t('计算中...');
@@ -856,6 +939,43 @@ const TopUp = () => {
         bonusRate={getBonusRateForAmount(topupInfo?.bonus, topUpCount)}
         groupRatio={topupGroupRatio}
       />
+
+      {/* 蓝兔支付二维码模态框（桌面端 native） */}
+      <Modal
+        title={t('微信扫码支付')}
+        visible={lantuPayModalOpen}
+        onCancel={handleLantuPayCancel}
+        maskClosable={false}
+        centered
+        footer={null}
+      >
+        <div className='flex flex-col items-center gap-3'>
+          <div className='text-sm text-slate-600 dark:text-slate-300'>
+            {t('请使用微信扫码完成支付')} · {t('剩余')} {lantuCountdown}s
+          </div>
+          {lantuPayUrl ? (
+            <img
+              src={lantuPayUrl}
+              alt='qrcode'
+              style={{
+                width: 220,
+                height: 220,
+                borderRadius: 12,
+                border: '1px solid rgba(148, 163, 184, 0.35)',
+              }}
+            />
+          ) : (
+            <div className='text-sm text-slate-600 dark:text-slate-300'>
+              {t('二维码加载中...')}
+            </div>
+          )}
+          {lantuTradeNo ? (
+            <div className='text-xs text-slate-500 dark:text-slate-400'>
+              {t('订单号')}：{lantuTradeNo}
+            </div>
+          ) : null}
+        </div>
+      </Modal>
 
       {/* 充值账单模态框 */}
       <TopupHistoryModal

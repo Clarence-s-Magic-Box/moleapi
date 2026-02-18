@@ -88,6 +88,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/pay", middleware.CriticalRateLimit(), controller.RequestEpay)
 				selfRoute.POST("/amount", controller.RequestAmount)
 				selfRoute.POST("/lantu/pay", middleware.CriticalRateLimit(), controller.RequestLanTuPay)
+				selfRoute.GET("/lantu/status", controller.GetLanTuOrderStatus)
 				selfRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.RequestStripePay)
 				selfRoute.POST("/stripe/amount", controller.RequestStripeAmount)
 				selfRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.RequestCreemPay)

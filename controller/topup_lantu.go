@@ -23,6 +23,7 @@ import (
 
 const (
 	lanTuDefaultApiBase = "https://api.ltzf.cn"
+	lanTuNativePath     = "/api/wxpay/native"
 	lanTuJumpH5Path    = "/api/wxpay/jump_h5"
 	lanTuGetOrderPath  = "/api/wxpay/get_pay_order"
 	lanTuFailCode      = 1 // 查询订单失败状态码（legacy 约定）
@@ -51,10 +52,50 @@ func GetLanTuPayConfig() *LanTuConfig {
 	}
 }
 
-// RequestLanTuPay creates a LanTu WeChat H5 payment and returns the pay link.
-// It is designed to be consumed by the current frontend flow (open link in new tab).
+type LanTuPayRequest struct {
+	Amount        int64  `json:"amount"`
+	PaymentMethod string `json:"payment_method"`
+	// client: "h5" (mobile) or "native" (desktop qr). If empty, server will auto-detect by User-Agent.
+	Client string `json:"client"`
+}
+
+func isMobileUserAgent(ua string) bool {
+	ua = strings.ToLower(ua)
+	// Keep this conservative: if unsure, treat as desktop (native qrcode) to avoid jump_h5 desktop error page.
+	if strings.Contains(ua, "mobile") {
+		return true
+	}
+	if strings.Contains(ua, "android") || strings.Contains(ua, "iphone") || strings.Contains(ua, "ipod") {
+		return true
+	}
+	if strings.Contains(ua, "ipad") {
+		return true
+	}
+	if strings.Contains(ua, "windows phone") {
+		return true
+	}
+	return false
+}
+
+func normalizeLanTuClient(c *gin.Context, v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "h5":
+		return "h5"
+	case "native":
+		return "native"
+	default:
+		if c != nil && c.Request != nil && isMobileUserAgent(c.Request.UserAgent()) {
+			return "h5"
+		}
+		return "native"
+	}
+}
+
+// RequestLanTuPay creates a LanTu WeChat payment:
+// - desktop: native qrcode (scan)
+// - mobile: H5 jump
 func RequestLanTuPay(c *gin.Context) {
-	var req EpayRequest
+	var req LanTuPayRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(200, gin.H{"message": "error", "data": "参数错误"})
 		return
@@ -118,8 +159,6 @@ func RequestLanTuPay(c *gin.Context) {
 		"body":         paramsToSign["body"],
 		"timestamp":    paramsToSign["timestamp"],
 		"notify_url":   paramsToSign["notify_url"],
-		"quit_url":     referer,
-		"return_url":   referer,
 		"sign":         sign,
 	}
 
@@ -143,7 +182,16 @@ func RequestLanTuPay(c *gin.Context) {
 		return
 	}
 
-	payLink, reqID, err := lanTuDoPay(c, params, common.BuildURL(cfg.ApiBase, lanTuJumpH5Path))
+	client := normalizeLanTuClient(c, req.Client)
+	endpointPath := lanTuNativePath
+	if client == "h5" {
+		// H5 supports return/quit urls (optional by doc).
+		params["quit_url"] = referer
+		params["return_url"] = referer
+		endpointPath = lanTuJumpH5Path
+	}
+
+	payLink, reqID, err := lanTuDoPay(c, params, common.BuildURL(cfg.ApiBase, endpointPath))
 	if err != nil {
 		c.JSON(200, gin.H{"message": "error", "data": err.Error()})
 		return
@@ -156,6 +204,8 @@ func RequestLanTuPay(c *gin.Context) {
 			"trade_no": tradeNo,
 			// Helps debugging upstream issues (safe to ignore on frontend).
 			"request_id": reqID,
+			// "native" -> QR code URL; "h5" -> jump URL.
+			"client": client,
 		},
 	})
 }
@@ -244,6 +294,38 @@ func LanTuPayNotify(c *gin.Context) {
 	c.String(http.StatusOK, "SUCCESS")
 }
 
+// GetLanTuOrderStatus returns the local order status for frontend polling.
+// It does not call LanTu upstream; LanTuPayNotify is responsible for verification/crediting.
+func GetLanTuOrderStatus(c *gin.Context) {
+	tradeNo := strings.TrimSpace(c.Query("trade_no"))
+	if tradeNo == "" {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "trade_no is required"})
+		return
+	}
+
+	topUp := model.GetTopUpByTradeNo(tradeNo)
+	if topUp == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "order not found"})
+		return
+	}
+	// Ensure users can only query their own orders.
+	if uid := c.GetInt("id"); uid > 0 && topUp.UserId != uid {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "forbidden"})
+		return
+	}
+
+	// Expire old orders.
+	if topUp.Status == common.TopUpStatusPending && time.Now().Unix()-topUp.CreateTime > lanTuOrderTTL {
+		topUp.Status = common.TopUpStatusExpired
+		_ = topUp.Update()
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"status":  topUp.Status,
+	})
+}
+
 func lanTuDoPay(ctx *gin.Context, params map[string]string, endpoint string) (payLink string, requestID string, err error) {
 	formData := make([]string, 0, len(params))
 	for k, v := range params {
@@ -315,7 +397,7 @@ func lanTuDoPay(ctx *gin.Context, params map[string]string, endpoint string) (pa
 		link = strings.TrimSpace(v)
 	case map[string]interface{}:
 		// Some deployments return object payloads (e.g. order_url / QRcode_url); prefer a URL-like field.
-		candidates := []string{"order_url", "pay_url", "url", "h5_url", "jump_url"}
+		candidates := []string{"QRcode_url", "qrcode_url", "order_url", "pay_url", "url", "h5_url", "jump_url", "code_url"}
 		for _, k := range candidates {
 			if vv, ok := v[k]; ok && vv != nil {
 				s := strings.TrimSpace(fmt.Sprintf("%v", vv))
