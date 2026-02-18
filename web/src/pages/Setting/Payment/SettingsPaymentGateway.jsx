@@ -42,7 +42,7 @@ export default function SettingsPaymentGateway(props) {
     CustomCallbackAddress: '',
     PayMethods: '',
     AmountOptions: '',
-    AmountDiscount: '',
+    AmountBonus: '',
   });
   const [originInputs, setOriginInputs] = useState({});
   const formApiRef = useRef(null);
@@ -65,7 +65,7 @@ export default function SettingsPaymentGateway(props) {
         CustomCallbackAddress: props.options.CustomCallbackAddress || '',
         PayMethods: props.options.PayMethods || '',
         AmountOptions: props.options.AmountOptions || '',
-        AmountDiscount: props.options.AmountDiscount || '',
+        AmountBonus: props.options.AmountBonus || '',
       };
 
       // 美化 JSON 展示
@@ -79,9 +79,9 @@ export default function SettingsPaymentGateway(props) {
         }
       } catch {}
       try {
-        if (currentInputs.AmountDiscount) {
-          currentInputs.AmountDiscount = JSON.stringify(
-            JSON.parse(currentInputs.AmountDiscount),
+        if (currentInputs.AmountBonus) {
+          currentInputs.AmountBonus = JSON.stringify(
+            JSON.parse(currentInputs.AmountBonus),
             null,
             2,
           );
@@ -129,11 +129,11 @@ export default function SettingsPaymentGateway(props) {
     }
 
     if (
-      originInputs['AmountDiscount'] !== inputs.AmountDiscount &&
-      inputs.AmountDiscount.trim() !== ''
+      originInputs['AmountBonus'] !== inputs.AmountBonus &&
+      inputs.AmountBonus.trim() !== ''
     ) {
-      if (!verifyJSON(inputs.AmountDiscount)) {
-        showError(t('充值金额折扣配置不是合法的 JSON 对象'));
+      if (!verifyJSON(inputs.AmountBonus)) {
+        showError(t('充值加赠配置不是合法的 JSON 对象'));
         return;
       }
     }
@@ -174,10 +174,10 @@ export default function SettingsPaymentGateway(props) {
           value: inputs.AmountOptions,
         });
       }
-      if (originInputs['AmountDiscount'] !== inputs.AmountDiscount) {
+      if (originInputs['AmountBonus'] !== inputs.AmountBonus) {
         options.push({
-          key: 'payment_setting.amount_discount',
-          value: inputs.AmountDiscount,
+          key: 'payment_setting.amount_bonus',
+          value: inputs.AmountBonus,
         });
       }
 
@@ -311,14 +311,14 @@ export default function SettingsPaymentGateway(props) {
           >
             <Col span={24}>
               <Form.TextArea
-                field='AmountDiscount'
-                label={t('充值金额折扣配置')}
+                field='AmountBonus'
+                label={t('充值加赠配置')}
                 placeholder={t(
-                  '为一个 JSON 对象，例如：{"100": 0.95, "200": 0.9, "500": 0.85}',
+                  '为一个 JSON 对象，例如：{"100": 0.05, "200": 0.08, "500": 0.12}',
                 )}
                 autosize
                 extraText={t(
-                  '设置不同充值金额对应的折扣，键为充值金额，值为折扣率，例如：{"100": 0.95, "200": 0.9, "500": 0.85}',
+                  '设置不同充值金额对应的加赠比例，键为充值金额，值为加赠比例，例如：{"100": 0.05, "200": 0.08, "500": 0.12}',
                 )}
               />
             </Col>

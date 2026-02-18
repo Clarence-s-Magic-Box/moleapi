@@ -228,7 +228,9 @@ func LanTuPayNotify(c *gin.Context) {
 
 	dAmount := decimal.NewFromInt(int64(topUp.Amount))
 	dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-	quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
+	bonusRate := operation_setting.GetTopupBonusRate(topUp.Amount)
+	dBonusMultiplier := decimal.NewFromFloat(1.0 + bonusRate)
+	quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).Mul(dBonusMultiplier).IntPart())
 	if err := model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true); err != nil {
 		c.String(http.StatusOK, "FAIL")
 		return

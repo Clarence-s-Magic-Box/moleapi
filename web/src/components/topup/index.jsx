@@ -172,11 +172,14 @@ const TopUp = () => {
   const convertDiscountToBonusMap = (discountMap) => {
     const converted = {};
     Object.keys(discountMap || {}).forEach((amountKey) => {
-      const discount = Number(discountMap[amountKey]);
-      if (!Number.isFinite(discount) || discount <= 0) return;
-      const bonusRate = 1 / discount - 1;
-      if (Number.isFinite(bonusRate) && bonusRate > 0) {
-        converted[Number(amountKey)] = Number(bonusRate.toFixed(4));
+      // Legacy compatibility:
+      // - Old deployments might only have amount_discount configured.
+      // - If values look like "bonus rates" (e.g. 0.05, 0.4), treat them as bonus directly.
+      // - If values look like "discount multipliers" (e.g. 0.95), do NOT convert to bonus.
+      const v = Number(discountMap[amountKey]);
+      if (!Number.isFinite(v) || v <= 0) return;
+      if (v <= 0.5) {
+        converted[Number(amountKey)] = Number(v.toFixed(4));
       }
     });
     return converted;

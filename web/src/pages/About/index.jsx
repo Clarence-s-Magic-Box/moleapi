@@ -21,10 +21,7 @@ import React, { useEffect, useState } from 'react';
 import { API, showError } from '../../helpers';
 import { marked } from 'marked';
 import { Empty } from '@douyinfe/semi-ui';
-import {
-  IllustrationConstruction,
-  IllustrationConstructionDark,
-} from '@douyinfe/semi-illustrations';
+import { IllustrationConstruction, IllustrationConstructionDark } from '@douyinfe/semi-illustrations';
 import { useTranslation } from 'react-i18next';
 
 const About = () => {
@@ -60,18 +57,22 @@ const About = () => {
   };
 
   const customDescription = (
-    <div style={{ textAlign: 'center' }}>
+    <div style={{ textAlign: 'center', fontSize: '14px', lineHeight: 1.7 }}>
       <p>{t('可在设置页面设置关于内容，支持 HTML & Markdown')}</p>
-      {t('New API项目仓库地址：')}
-      <a
-        href='https://github.com/QuantumNous/new-api'
-        target='_blank'
-        rel='noopener noreferrer'
-        className='!text-semi-color-primary'
-      >
-        https://github.com/QuantumNous/new-api
-      </a>
-      <p>
+
+      <p style={{ marginBottom: 8 }}>
+        {t('关于项目')}: {' '}
+        <a
+          href='https://github.com/QuantumNous/new-api'
+          target='_blank'
+          rel='noopener noreferrer'
+          className='!text-semi-color-primary'
+        >
+          QuantumNous/new-api
+        </a>
+      </p>
+
+      <p style={{ marginBottom: 8 }}>
         <a
           href='https://github.com/QuantumNous/new-api'
           target='_blank'
@@ -89,6 +90,18 @@ const About = () => {
         >
           QuantumNous
         </a>{' '}
+        | {t('关于我们')}: {' '}
+        <a
+          href='https://github.com/QuantumNous'
+          target='_blank'
+          rel='noopener noreferrer'
+          className='!text-semi-color-primary'
+        >
+          github.com/QuantumNous
+        </a>
+      </p>
+
+      <p style={{ marginBottom: 8 }}>
         {t('| 基于')}{' '}
         <a
           href='https://github.com/songquanpeng/one-api/releases/tag/v0.5.4'
@@ -108,26 +121,38 @@ const About = () => {
           JustSong
         </a>
       </p>
-      <p>
-        {t('本项目根据')}
-        <a
-          href='https://github.com/songquanpeng/one-api/blob/v0.5.4/LICENSE'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          {t('MIT许可证')}
-        </a>
-        {t('授权，需在遵守')}
+
+      <p style={{ marginBottom: 8 }}>
+        {t('协议与许可')}: {' '}
         <a
           href='https://www.gnu.org/licenses/agpl-3.0.html'
           target='_blank'
           rel='noopener noreferrer'
           className='!text-semi-color-primary'
         >
-          {t('AGPL v3.0协议')}
+          AGPL-3.0
+        </a>{' '}
+        | <a
+          href='https://github.com/QuantumNous/new-api/blob/main/LICENSE'
+          target='_blank'
+          rel='noopener noreferrer'
+          className='!text-semi-color-primary'
+        >
+          LICENSE
+        </a>{' '}
+        | {t('上游 One API 许可证')}: {' '}
+        <a
+          href='https://github.com/songquanpeng/one-api/blob/v0.5.4/LICENSE'
+          target='_blank'
+          rel='noopener noreferrer'
+          className='!text-semi-color-primary'
+        >
+          MIT
         </a>
-        {t('的前提下使用。')}
+      </p>
+
+      <p style={{ marginTop: 12, marginBottom: 0, opacity: 0.85 }}>
+        {t('本站仅提供 API 网关/转发与管理能力，不提供任何大模型服务本体；请在使用时遵守上游服务条款与当地法律法规。')}
       </p>
     </div>
   );
@@ -137,15 +162,9 @@ const About = () => {
       {aboutLoaded && about === '' ? (
         <div className='flex justify-center items-center h-screen p-8'>
           <Empty
-            image={
-              <IllustrationConstruction style={{ width: 150, height: 150 }} />
-            }
-            darkModeImage={
-              <IllustrationConstructionDark
-                style={{ width: 150, height: 150 }}
-              />
-            }
-            description={t('管理员暂时未设置任何关于内容')}
+            image={<IllustrationConstruction style={{ width: 150, height: 150 }} />}
+            darkModeImage={<IllustrationConstructionDark style={{ width: 150, height: 150 }} />}
+            description={t('关于项目')}
             style={emptyStyle}
           >
             {customDescription}

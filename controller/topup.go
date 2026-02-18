@@ -73,6 +73,16 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	// Current user's top-up group ratio (regular users can't read /api/option).
+	topupGroupRatio := 1.0
+	if userId := c.GetInt("id"); userId > 0 {
+		if group, err := model.GetUserGroup(userId, true); err == nil {
+			if r := common.GetTopupGroupRatio(group); r > 0 {
+				topupGroupRatio = r
+			}
+		}
+	}
+
 	data := gin.H{
 		"enable_online_topup": epayEnabled || lantuEnabled,
 		"enable_stripe_topup": setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "",
@@ -82,7 +92,11 @@ func GetTopUpInfo(c *gin.Context) {
 		"min_topup":           operation_setting.MinTopUp,
 		"stripe_min_topup":    setting.StripeMinTopUp,
 		"amount_options":      operation_setting.GetPaymentSetting().AmountOptions,
-		"discount":            operation_setting.GetPaymentSetting().AmountDiscount,
+		// bonus: extra quota bonus rate map, preferred by frontend
+		"bonus": operation_setting.GetTopupBonusMapForAPI(),
+		// discount: legacy pay discount multiplier map
+		"discount":           operation_setting.GetPaymentSetting().AmountDiscount,
+		"topup_group_ratio":  topupGroupRatio,
 	}
 	common.ApiSuccess(c, data)
 }
@@ -112,6 +126,7 @@ func GetEpayClient() *epay.Client {
 
 func getPayMoney(amount int64, group string) float64 {
 	dAmount := decimal.NewFromInt(amount)
+	originalAmount := amount
 	// 充值金额以“展示类型”为准：
 	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
@@ -127,12 +142,7 @@ func getPayMoney(amount int64, group string) float64 {
 	dTopupGroupRatio := decimal.NewFromFloat(topupGroupRatio)
 	dPrice := decimal.NewFromFloat(operation_setting.Price)
 	// apply optional preset discount by the original request amount (if configured), default 1.0
-	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok {
-		if ds > 0 {
-			discount = ds
-		}
-	}
+	discount := operation_setting.GetTopupDiscountMultiplier(originalAmount)
 	dDiscount := decimal.NewFromFloat(discount)
 
 	payMoney := dAmount.Mul(dPrice).Mul(dTopupGroupRatio).Mul(dDiscount)
@@ -326,7 +336,9 @@ func EpayNotify(c *gin.Context) {
 			//user.Quota += topUp.Amount * 500000
 			dAmount := decimal.NewFromInt(int64(topUp.Amount))
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
+			bonusRate := operation_setting.GetTopupBonusRate(topUp.Amount)
+			dBonusMultiplier := decimal.NewFromFloat(1.0 + bonusRate)
+			quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).Mul(dBonusMultiplier).IntPart())
 			err = model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true)
 			if err != nil {
 				log.Printf("易支付回调更新用户失败: %v", topUp)

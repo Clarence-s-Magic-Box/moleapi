@@ -40,6 +40,7 @@ const PaymentSetting = () => {
     CustomCallbackAddress: '',
     PayMethods: '',
     AmountOptions: '',
+    AmountBonus: '',
     AmountDiscount: '',
 
     StripeApiSecret: '',
@@ -87,6 +88,18 @@ const PaymentSetting = () => {
               newInputs['AmountOptions'] = item.value;
             }
             break;
+          case 'payment_setting.amount_bonus':
+            try {
+              newInputs['AmountBonus'] = JSON.stringify(
+                JSON.parse(item.value),
+                null,
+                2,
+              );
+            } catch (error) {
+              console.error('解析AmountBonus出错:', error);
+              newInputs['AmountBonus'] = item.value;
+            }
+            break;
           case 'payment_setting.amount_discount':
             try {
               newInputs['AmountDiscount'] = JSON.stringify(
@@ -114,6 +127,28 @@ const PaymentSetting = () => {
             break;
         }
       });
+
+      // Legacy compatibility:
+      // If amount_bonus is not set but amount_discount looks like bonus rates (e.g. 0.05 ~ 0.4),
+      // surface it in the UI as AmountBonus so admins can edit/migrate it.
+      if (
+        (!newInputs['AmountBonus'] || newInputs['AmountBonus'].trim() === '') &&
+        typeof newInputs['AmountDiscount'] === 'string' &&
+        newInputs['AmountDiscount'].trim() !== ''
+      ) {
+        try {
+          const parsed = JSON.parse(newInputs['AmountDiscount']);
+          const values = Object.values(parsed || {}).map((v) => Number(v));
+          const looksLikeBonus =
+            values.length > 0 &&
+            values.every((v) => Number.isFinite(v) && v > 0 && v <= 0.5);
+          if (looksLikeBonus) {
+            newInputs['AmountBonus'] = newInputs['AmountDiscount'];
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
 
       setInputs(newInputs);
     } else {
