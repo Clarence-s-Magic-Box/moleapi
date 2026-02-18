@@ -83,7 +83,7 @@ func RequestLanTuPay(c *gin.Context) {
 	}
 
 	// trade no aligns with Epay formatting, so logs/search feel consistent.
-	tradeNo, err := model.GenerateUniqueTopUpTradeNo(id)
+	tradeNo, err := model.GenerateUniqueLanTuTradeNo(id)
 	if err != nil {
 		c.JSON(200, gin.H{"message": "error", "data": "创建订单失败"})
 		return

@@ -75,6 +75,43 @@ func GenerateUniqueTopUpTradeNo(userId int) (string, error) {
 	return "", errors.New("failed to generate unique topup trade no")
 }
 
+// FormatLanTuTradeNo builds an out_trade_no compatible with LanTu (ltzf) constraints:
+// - length: 6-32
+// - recommended: alphanumeric
+// We use a seconds timestamp (14 digits) plus a short random suffix to avoid collisions.
+func FormatLanTuTradeNo(userId int, t time.Time, suffix string) (string, error) {
+	if userId <= 0 {
+		return "", errors.New("invalid user id")
+	}
+	// Keep the legacy prefix so logs/search are familiar: USR{user}NO{time}{rand}
+	tradeNo := fmt.Sprintf("USR%06dNO%s%s", userId, t.UTC().Format("20060102150405"), suffix)
+	if l := len(tradeNo); l < 6 || l > 32 {
+		return "", errors.New("invalid lantu out_trade_no length")
+	}
+	return tradeNo, nil
+}
+
+func GenerateUniqueLanTuTradeNo(userId int) (string, error) {
+	if userId <= 0 {
+		return "", errors.New("invalid user id")
+	}
+	for i := 0; i < 8; i++ {
+		tradeNo, err := FormatLanTuTradeNo(userId, time.Now(), common.GetRandomString(4))
+		if err != nil {
+			return "", err
+		}
+		var count int64
+		if err := DB.Model(&TopUp{}).Where("trade_no = ?", tradeNo).Count(&count).Error; err != nil {
+			return "", err
+		}
+		if count == 0 {
+			return tradeNo, nil
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return "", errors.New("failed to generate unique lantu trade no")
+}
+
 func Recharge(referenceId string, customerId string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
