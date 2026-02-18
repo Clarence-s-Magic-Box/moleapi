@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -141,7 +140,7 @@ func RequestLanTuPay(c *gin.Context) {
 		return
 	}
 
-	payLink, err := lanTuDoPay(params, common.BuildURL(cfg.ApiBase, lanTuJumpH5Path))
+	payLink, reqID, err := lanTuDoPay(c, params, common.BuildURL(cfg.ApiBase, lanTuJumpH5Path))
 	if err != nil {
 		c.JSON(200, gin.H{"message": "error", "data": err.Error()})
 		return
@@ -152,6 +151,8 @@ func RequestLanTuPay(c *gin.Context) {
 		"data": gin.H{
 			"pay_link": payLink,
 			"trade_no": tradeNo,
+			// Helps debugging upstream issues (safe to ignore on frontend).
+			"request_id": reqID,
 		},
 	})
 }
@@ -240,7 +241,7 @@ func LanTuPayNotify(c *gin.Context) {
 	c.String(http.StatusOK, "SUCCESS")
 }
 
-func lanTuDoPay(params map[string]string, endpoint string) (string, error) {
+func lanTuDoPay(ctx *gin.Context, params map[string]string, endpoint string) (payLink string, requestID string, err error) {
 	formData := make([]string, 0, len(params))
 	for k, v := range params {
 		formData = append(formData, k+"="+url.QueryEscape(v))
@@ -252,35 +253,82 @@ func lanTuDoPay(params map[string]string, endpoint string) (string, error) {
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", errors.New("调起支付失败")
+		return "", "", errors.New("调起支付失败")
 	}
 	defer res.Body.Close()
 
 	body, _ := io.ReadAll(res.Body)
 	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", errors.New("支付响应解析失败")
+	if err := common.Unmarshal(body, &result); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("LanTu pay response json parse failed: endpoint=%s status=%s body=%q err=%v", endpoint, res.Status, string(body), err))
+		return "", "", errors.New("支付响应解析失败")
 	}
 
-	// legacy behavior: code == 1 means error
-	code := fmt.Sprintf("%v", result["code"])
-	if code == "1" {
-		msg := fmt.Sprintf("%v", result["msg"])
-		if msg == "" {
+	code := strings.TrimSpace(fmt.Sprintf("%v", result["code"]))
+	msg := strings.TrimSpace(fmt.Sprintf("%v", result["msg"]))
+	if msg == "" || msg == "<nil>" {
+		// Non-standard gateways may use message/error instead of msg.
+		if v, ok := result["message"]; ok && v != nil {
+			msg = strings.TrimSpace(fmt.Sprintf("%v", v))
+		} else if v, ok := result["error"]; ok && v != nil {
+			msg = strings.TrimSpace(fmt.Sprintf("%v", v))
+		}
+	}
+	reqID := strings.TrimSpace(fmt.Sprintf("%v", result["request_id"]))
+	if reqID == "<nil>" {
+		reqID = ""
+	}
+
+	// Spec: code 0 success, 1 failure. If code is missing/unrecognized, treat as failure (and log raw body).
+	if code != "0" {
+		if msg == "" || msg == "<nil>" {
 			msg = "创建支付失败"
 		}
-		return "", errors.New(msg)
+		if code == "" || code == "<nil>" {
+			logger.LogError(ctx, fmt.Sprintf("LanTu pay response missing/unrecognized code: endpoint=%s status=%s body=%q", endpoint, res.Status, string(body)))
+		}
+		if reqID != "" {
+			msg = fmt.Sprintf("%s (request_id=%s)", msg, reqID)
+		}
+		return "", reqID, errors.New(msg)
 	}
 
 	dataVal, ok := result["data"]
 	if !ok || dataVal == nil {
-		return "", errors.New("支付响应缺少 data")
+		logger.LogError(ctx, fmt.Sprintf("LanTu pay response missing data: endpoint=%s status=%s body=%q", endpoint, res.Status, string(body)))
+		if reqID != "" {
+			return "", reqID, errors.New("支付响应缺少 data (request_id=" + reqID + ")")
+		}
+		return "", reqID, errors.New("支付响应缺少 data")
 	}
-	link := fmt.Sprintf("%v", dataVal)
+
+	var link string
+	switch v := dataVal.(type) {
+	case string:
+		link = strings.TrimSpace(v)
+	case map[string]interface{}:
+		// Some deployments return object payloads (e.g. order_url / QRcode_url); prefer a URL-like field.
+		candidates := []string{"order_url", "pay_url", "url", "h5_url", "jump_url"}
+		for _, k := range candidates {
+			if vv, ok := v[k]; ok && vv != nil {
+				s := strings.TrimSpace(fmt.Sprintf("%v", vv))
+				if s != "" && s != "<nil>" {
+					link = s
+					break
+				}
+			}
+		}
+	default:
+		link = strings.TrimSpace(fmt.Sprintf("%v", dataVal))
+	}
 	if link == "" {
-		return "", errors.New("支付链接为空")
+		logger.LogError(ctx, fmt.Sprintf("LanTu pay response empty data: endpoint=%s status=%s body=%q", endpoint, res.Status, string(body)))
+		if reqID != "" {
+			return "", reqID, errors.New("支付链接为空 (request_id=" + reqID + ")")
+		}
+		return "", reqID, errors.New("支付链接为空")
 	}
-	return link, nil
+	return link, reqID, nil
 }
 
 func lanTuCheckPaid(cfg *LanTuConfig, mchId, outTradeNo string) (bool, error) {
@@ -310,15 +358,20 @@ func lanTuCheckPaid(cfg *LanTuConfig, mchId, outTradeNo string) (bool, error) {
 
 	body, _ := io.ReadAll(res.Body)
 	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := common.Unmarshal(body, &result); err != nil {
 		return false, err
 	}
 
 	if result["code"] == nil {
 		return false, errors.New("订单查询返回数据异常")
 	}
-	if code, ok := result["code"].(float64); ok && int(code) == lanTuFailCode {
-		return false, errors.New("订单查询失败")
+	code := strings.TrimSpace(fmt.Sprintf("%v", result["code"]))
+	if code == "1" {
+		msg := strings.TrimSpace(fmt.Sprintf("%v", result["msg"]))
+		if msg == "" || msg == "<nil>" {
+			msg = "订单查询失败"
+		}
+		return false, errors.New(msg)
 	}
 
 	data, ok := result["data"].(map[string]interface{})
