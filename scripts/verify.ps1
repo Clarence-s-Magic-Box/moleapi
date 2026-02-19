@@ -12,7 +12,11 @@ go test ./...
 
 Write-Host "[3/3] Build backend binary with VERSION" -ForegroundColor Cyan
 $ver = (Get-Content (Join-Path $PSScriptRoot "..\\VERSION") -Raw).Trim()
-go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$ver'" -o new-api.exe .
+$commit = "unknown"
+try {
+  $commit = (git rev-parse --short HEAD).Trim()
+} catch {}
+go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$ver' -X 'github.com/QuantumNous/new-api/common.Commit=$commit'" -o new-api.exe .
 Write-Host ("Built new-api.exe version: " + (& .\\new-api.exe --version)) -ForegroundColor Green
 
 Write-Host ""

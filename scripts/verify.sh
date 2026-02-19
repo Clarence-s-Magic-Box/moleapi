@@ -13,11 +13,11 @@ go test ./...
 
 echo "[3/3] Build backend binary with VERSION"
 ver="$(tr -d '\r\n' < VERSION)"
-go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=${ver}'" -o new-api .
+commit="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=${ver}' -X 'github.com/QuantumNous/new-api/common.Commit=${commit}'" -o new-api .
 echo "Built ./new-api version: $(./new-api --version)"
 
 echo ""
 echo "Run: ./new-api"
 echo "Default SQLite path: one-api.db in current working directory (set SQLITE_PATH to change)."
 popd >/dev/null
-

@@ -49,7 +49,9 @@ func GetStatus(c *gin.Context) {
 
 	data := gin.H{
 		"version":                     common.Version,
+		"upstream_version":            common.Version,
 		"commit":                      common.Commit,
+		"project_commit":              common.Commit,
 		"start_time":                  common.StartTime,
 		"email_verification":          common.EmailVerificationEnabled,
 		"github_oauth":                common.GitHubOAuthEnabled,

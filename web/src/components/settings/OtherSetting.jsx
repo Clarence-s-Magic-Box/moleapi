@@ -56,6 +56,10 @@ const OtherSetting = () => {
     tag_name: '',
     content: '',
   });
+  const upstreamVersion =
+    statusState?.status?.upstream_version || statusState?.status?.version || '';
+  const projectCommit =
+    statusState?.status?.project_commit || statusState?.status?.commit || '';
 
   const updateOption = async (key, value) => {
     setLoading(true);
@@ -259,7 +263,7 @@ const OtherSetting = () => {
       // const res = await API.get('/api/status/github-latest-release');
 
       const { tag_name, body } = res;
-      if (tag_name === statusState?.status?.version) {
+      if (tag_name === upstreamVersion) {
         showSuccess(`已是最新版本：${tag_name}`);
       } else {
         setUpdateData({
@@ -333,7 +337,7 @@ const OtherSetting = () => {
                   <Space>
                     <Text>
                       {t('当前版本')}：
-                      {statusState?.status?.version || t('未知')}
+                      {upstreamVersion || t('未知')}
                     </Text>
                     <Button
                       type='primary'
@@ -356,7 +360,7 @@ const OtherSetting = () => {
                 <Col span={16}>
                   <Text copyable>
                     {t('Commit版本')}：
-                    {statusState?.status?.commit || t('未知')}
+                    {projectCommit || t('未知')}
                   </Text>
                 </Col>
               </Row>

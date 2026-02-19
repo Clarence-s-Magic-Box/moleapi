@@ -15,6 +15,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        COMMIT_SHA: ${COMMIT_SHA:-}
     image: mole-api:local
     container_name: new-api
     restart: always
@@ -57,4 +59,3 @@ services:
 
 volumes:
   pg_data:
-
