@@ -20,6 +20,8 @@ tiktoken_cache
 .cache
 web/bun.lock
 plans
+.tmp/
+web/dist_prod/
 
 electron/node_modules
 electron/dist
