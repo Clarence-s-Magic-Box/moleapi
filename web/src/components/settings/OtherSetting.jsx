@@ -263,7 +263,11 @@ const OtherSetting = () => {
       // const res = await API.get('/api/status/github-latest-release');
 
       const { tag_name, body } = res;
-      if (tag_name === upstreamVersion) {
+      const normalizeVersion = (version) =>
+        String(version || '')
+          .trim()
+          .replace(/^v/i, '');
+      if (normalizeVersion(tag_name) === normalizeVersion(upstreamVersion)) {
         showSuccess(`已是最新版本：${tag_name}`);
       } else {
         setUpdateData({
