@@ -23,6 +23,7 @@ import NotificationButton from './NotificationButton';
 import ThemeToggle from './ThemeToggle';
 import LanguageSelector from './LanguageSelector';
 import UserArea from './UserArea';
+import QuickNavDropdown from './QuickNavDropdown';
 
 const ActionButtons = ({
   isNewYear,
@@ -32,6 +33,7 @@ const ActionButtons = ({
   onThemeToggle,
   currentLang,
   onLanguageChange,
+  quickNavLinks,
   userState,
   isLoading,
   isMobile,
@@ -57,6 +59,8 @@ const ActionButtons = ({
         onLanguageChange={onLanguageChange}
         t={t}
       />
+
+      <QuickNavDropdown quickNavLinks={quickNavLinks} navigate={navigate} t={t} />
 
       <UserArea
         userState={userState}

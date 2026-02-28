@@ -58,8 +58,6 @@ const About = () => {
 
   const customDescription = (
     <div style={{ textAlign: 'center', fontSize: '14px', lineHeight: 1.7 }}>
-      <p>{t('可在设置页面设置关于内容，支持 HTML & Markdown')}</p>
-
       <p style={{ marginBottom: 8 }}>
         {t('关于项目')}: {' '}
         <a

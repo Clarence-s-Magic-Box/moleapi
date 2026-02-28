@@ -1008,20 +1008,26 @@ const TopUp = () => {
           ) : null}
 
           <Text type='warning' className='block'>
-            {t('订单将在')}{' '}
-            {Math.floor(lantuCountdown / 60)}:
-            {(lantuCountdown % 60).toString().padStart(2, '0')} {t('后失效')}
+            {t('订单将在 {{time}} 后失效', {
+              time: `${Math.floor(lantuCountdown / 60)}:${(lantuCountdown % 60)
+                .toString()
+                .padStart(2, '0')}`,
+            })}
           </Text>
 
           {lantuTradeNo ? (
-            <Text type='tertiary' className='text-xs'>
-              {t('订单号')}：{lantuTradeNo}
-            </Text>
+            <div>
+              <Text type='tertiary' className='text-xs block'>
+                {t('订单号')}：{lantuTradeNo}
+              </Text>
+            </div>
           ) : null}
 
-          <Text type='tertiary' className='text-xs'>
-            {t('支付后点击"我已支付完成"，在日志页即可查看充值详情')}
-          </Text>
+          <div>
+            <Text type='tertiary' className='text-xs block'>
+              {t('支付后点击"我已支付完成"，在日志页即可查看充值详情')}
+            </Text>
+          </div>
         </div>
       </Modal>
 
