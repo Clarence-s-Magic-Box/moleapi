@@ -310,6 +310,7 @@ const renderQuotaUsage = (text, record, t) => {
 const renderOperations = (
   text,
   record,
+  copyText,
   onOpenLink,
   setEditingToken,
   setShowEdit,
@@ -348,23 +349,20 @@ const renderOperations = (
         <Button
           size='small'
           type='tertiary'
-          onClick={() => {
-            if (chatsArray.length === 0) {
-              showError(t('请联系管理员配置聊天链接'));
-            } else {
-              const first = chatsArray[0];
-              onOpenLink(first.name, first.value, record);
-            }
+          onClick={async () => {
+            await copyText(`sk-${record.key}`);
           }}
         >
-          {t('聊天')}
+          {t('复制')}
         </Button>
         <Dropdown trigger='click' position='bottomRight' menu={chatsArray}>
           <Button
             type='tertiary'
             icon={<IconTreeTriangleDown />}
             size='small'
-          ></Button>
+          >
+            {t('聊天')}
+          </Button>
         </Dropdown>
       </SplitButtonGroup>
 
@@ -499,6 +497,7 @@ export const getTokensColumns = ({
         renderOperations(
           text,
           record,
+          copyText,
           onOpenLink,
           setEditingToken,
           setShowEdit,

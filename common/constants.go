@@ -11,10 +11,9 @@ import (
 )
 
 var StartTime = time.Now().Unix() // unit: second
-var Version = "v0.9.2.1"          // this hard coding will be replaced automatically when building, no need to manually change
+var Version = "v0.9.2.2"          // this hard coding will be replaced automatically when building, no need to manually change
 // UpstreamVersion tracks the synced upstream new-api version for update checks and "Based on" display.
 var UpstreamVersion = "v0.11.1-alpha.2"
-
 // Commit is the build git commit SHA (typically short). It can be injected via ldflags or env.
 var Commit = ""
 var SystemName = "MoleAPI"
