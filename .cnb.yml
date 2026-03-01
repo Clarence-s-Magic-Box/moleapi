@@ -1,28 +1,38 @@
 main:
   push:
-    - stages:
-        - name: build-and-push-main
-          image: docker:24.0.9
-          services:
-            - docker
+    - services:
+        - docker
+      docker:
+        image: docker:24.0.9
+      stages:
+        - name: docker-build-main
           script:
-            - export IMAGE="docker.cnb.cool/${CNB_REPO_SLUG_LOWERCASE}"
+            - export IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
             - export TAG="${CNB_BRANCH_SLUG}-${CNB_SHORT_SHA}"
             - docker build -f ./Dockerfile -t "${IMAGE}:${TAG}" -t "${IMAGE}:main-latest" .
+        - name: docker-push-main
+          script:
+            - export IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
+            - export TAG="${CNB_BRANCH_SLUG}-${CNB_SHORT_SHA}"
             - docker push "${IMAGE}:${TAG}"
             - docker push "${IMAGE}:main-latest"
 
 production:
   push:
-    - stages:
-        - name: build-and-push-production
-          image: docker:24.0.9
-          services:
-            - docker
+    - services:
+        - docker
+      docker:
+        image: docker:24.0.9
+      stages:
+        - name: docker-build-production
           script:
-            - export IMAGE="docker.cnb.cool/${CNB_REPO_SLUG_LOWERCASE}"
+            - export IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
             - export TAG="${CNB_BRANCH_SLUG}-${CNB_SHORT_SHA}"
             - docker build -f ./Dockerfile -t "${IMAGE}:${TAG}" -t "${IMAGE}:production-latest" -t "${IMAGE}:latest" .
+        - name: docker-push-production
+          script:
+            - export IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
+            - export TAG="${CNB_BRANCH_SLUG}-${CNB_SHORT_SHA}"
             - docker push "${IMAGE}:${TAG}"
             - docker push "${IMAGE}:production-latest"
             - docker push "${IMAGE}:latest"
