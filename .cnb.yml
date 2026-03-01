@@ -1,24 +1,3 @@
-main:
-  push:
-    - services:
-        - docker
-      docker:
-        image: docker:24.0.9
-      stages:
-        - name: docker-build-main
-          script:
-            - export IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
-            - export BRANCH_TAG="$(echo "${CNB_BRANCH:-unknown}" | tr '/' '-')"
-            - export TAG="${BRANCH_TAG}-${CNB_COMMIT_SHORT:-nosha}"
-            - docker build -f ./Dockerfile --build-arg COMMIT_SHA="${CNB_COMMIT_SHORT:-nosha}" -t "${IMAGE}:${TAG}" -t "${IMAGE}:main-latest" .
-        - name: docker-push-main
-          script:
-            - export IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
-            - export BRANCH_TAG="$(echo "${CNB_BRANCH:-unknown}" | tr '/' '-')"
-            - export TAG="${BRANCH_TAG}-${CNB_COMMIT_SHORT:-nosha}"
-            - docker push "${IMAGE}:${TAG}"
-            - docker push "${IMAGE}:main-latest"
-
 production:
   push:
     - services:
@@ -26,17 +5,15 @@ production:
       docker:
         image: docker:24.0.9
       stages:
-        - name: docker-build-production
+        - name: docker-build-versioned
           script:
             - export IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
-            - export BRANCH_TAG="$(echo "${CNB_BRANCH:-unknown}" | tr '/' '-')"
-            - export TAG="${BRANCH_TAG}-${CNB_COMMIT_SHORT:-nosha}"
-            - docker build -f ./Dockerfile --build-arg COMMIT_SHA="${CNB_COMMIT_SHORT:-nosha}" -t "${IMAGE}:${TAG}" -t "${IMAGE}:production-latest" -t "${IMAGE}:latest" .
-        - name: docker-push-production
+            - export VERSION_TAG="$(tr -d '\r\n' < VERSION)"
+            - if [ -z "${VERSION_TAG}" ]; then export VERSION_TAG="${CNB_COMMIT_SHORT:-nosha}"; fi
+            - docker build -f ./Dockerfile --build-arg COMMIT_SHA="${CNB_COMMIT_SHORT:-nosha}" -t "${IMAGE}:${VERSION_TAG}" .
+        - name: docker-push-versioned
           script:
             - export IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
-            - export BRANCH_TAG="$(echo "${CNB_BRANCH:-unknown}" | tr '/' '-')"
-            - export TAG="${BRANCH_TAG}-${CNB_COMMIT_SHORT:-nosha}"
-            - docker push "${IMAGE}:${TAG}"
-            - docker push "${IMAGE}:production-latest"
-            - docker push "${IMAGE}:latest"
+            - export VERSION_TAG="$(tr -d '\r\n' < VERSION)"
+            - if [ -z "${VERSION_TAG}" ]; then export VERSION_TAG="${CNB_COMMIT_SHORT:-nosha}"; fi
+            - docker push "${IMAGE}:${VERSION_TAG}"
