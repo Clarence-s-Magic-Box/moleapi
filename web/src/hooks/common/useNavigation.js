@@ -23,22 +23,15 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
   const { mainNavLinks, quickNavLinks } = useMemo(() => {
     // 默认配置，如果没有传入配置则显示所有模块
     const defaultModules = {
-      home: true,
       console: true,
       pricing: true,
       docs: true,
-      about: true,
     };
 
     // 使用传入的配置或默认配置
     const modules = headerNavModules || defaultModules;
 
     const allLinks = [
-      {
-        text: t('首页'),
-        itemKey: 'home',
-        to: '/',
-      },
       {
         text: t('控制台'),
         itemKey: 'console',
@@ -59,11 +52,6 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
             },
           ]
         : []),
-      {
-        text: t('关于'),
-        itemKey: 'about',
-        to: '/about',
-      },
     ];
 
     // 根据配置过滤导航链接
@@ -81,12 +69,8 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
     });
 
     return {
-      mainNavLinks: visibleLinks.filter(
-        (link) => link.itemKey !== 'home' && link.itemKey !== 'about',
-      ),
-      quickNavLinks: visibleLinks.filter(
-        (link) => link.itemKey === 'home' || link.itemKey === 'about',
-      ),
+      mainNavLinks: visibleLinks,
+      quickNavLinks: [],
     };
   }, [t, docsLink, headerNavModules]);
 
