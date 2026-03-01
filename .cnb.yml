@@ -10,7 +10,7 @@ main:
             - export IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
             - export BRANCH_TAG="$(echo "${CNB_BRANCH:-unknown}" | tr '/' '-')"
             - export TAG="${BRANCH_TAG}-${CNB_COMMIT_SHORT:-nosha}"
-            - docker build -f ./Dockerfile -t "${IMAGE}:${TAG}" -t "${IMAGE}:main-latest" .
+            - docker build -f ./Dockerfile --build-arg COMMIT_SHA="${CNB_COMMIT_SHORT:-nosha}" -t "${IMAGE}:${TAG}" -t "${IMAGE}:main-latest" .
         - name: docker-push-main
           script:
             - export IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
@@ -31,7 +31,7 @@ production:
             - export IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
             - export BRANCH_TAG="$(echo "${CNB_BRANCH:-unknown}" | tr '/' '-')"
             - export TAG="${BRANCH_TAG}-${CNB_COMMIT_SHORT:-nosha}"
-            - docker build -f ./Dockerfile -t "${IMAGE}:${TAG}" -t "${IMAGE}:production-latest" -t "${IMAGE}:latest" .
+            - docker build -f ./Dockerfile --build-arg COMMIT_SHA="${CNB_COMMIT_SHORT:-nosha}" -t "${IMAGE}:${TAG}" -t "${IMAGE}:production-latest" -t "${IMAGE}:latest" .
         - name: docker-push-production
           script:
             - export IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"

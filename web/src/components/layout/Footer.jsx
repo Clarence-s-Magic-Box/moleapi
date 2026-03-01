@@ -28,7 +28,9 @@ const FooterBar = () => {
   const [footer, setFooter] = useState(getFooterHTML());
   const systemName = getSystemName();
   const [statusState] = useContext(StatusContext);
-  const upstreamVersion = statusState?.status?.version || '';
+  const upstreamVersion =
+    statusState?.status?.upstream_version || statusState?.status?.version || '';
+  const projectVersion = statusState?.status?.project_version || '';
 
   const loadFooter = () => {
     let footer_html = localStorage.getItem('footer_html');
@@ -64,21 +66,27 @@ const FooterBar = () => {
             <div className='footer-sub'>
               Based on{' '}
               <a
-                href='https://github.com/Calcium-Ion/new-api'
+                href='https://github.com/QuantumNous/new-api'
                 target='_blank'
                 rel='noreferrer'
                 className='!text-semi-color-primary font-medium'
               >
                 New API {upstreamVersion}
               </a>{' '}
+              {projectVersion ? (
+                <>
+                  {' '}
+                  || MoleAPI {projectVersion}
+                </>
+              ) : null}{' '}
               by{' '}
               <a
-                href='https://github.com/Calcium-Ion'
+                href='https://github.com/QuantumNous'
                 target='_blank'
                 rel='noreferrer'
                 className='!text-semi-color-primary font-medium'
               >
-                Calcium-Ion
+                QuantumNous
               </a>{' '}
               ||{' '}
               <a
@@ -103,7 +111,7 @@ const FooterBar = () => {
         </div>
       </footer>
     );
-  }, [currentYear, systemName, t, upstreamVersion]);
+  }, [currentYear, systemName, t, upstreamVersion, projectVersion]);
 
   useEffect(() => {
     loadFooter();
