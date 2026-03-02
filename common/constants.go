@@ -11,7 +11,7 @@ import (
 )
 
 var StartTime = time.Now().Unix() // unit: second
-var Version = "v0.9.2.2"           // this hard coding will be replaced automatically when building, no need to manually change
+var Version = "v0.9.2.3"           // this hard coding will be replaced automatically when building, no need to manually change
 // Commit is the build git commit SHA (typically short). It can be injected via ldflags or env.
 var Commit = ""
 var SystemName = "MoleAPI"
