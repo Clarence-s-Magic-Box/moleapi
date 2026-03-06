@@ -24,6 +24,8 @@ import {
   Input,
   ScrollList,
   ScrollItem,
+  Row,
+  Col,
 } from '@douyinfe/semi-ui';
 import { API, showError, copy, showSuccess } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
@@ -33,7 +35,12 @@ import { useActualTheme } from '../../context/Theme';
 import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
 import { IconGithubLogo, IconCopy } from '@douyinfe/semi-icons';
-import { IconTag, IconColorPlatte } from '@douyinfe/semi-icons-lab';
+import {
+  IconAccessibility,
+  IconBadgeStar,
+  IconTag,
+  IconColorPlatte,
+} from '@douyinfe/semi-icons-lab';
 import { Link } from 'react-router-dom';
 import NoticeModal from '../../components/layout/NoticeModal';
 import {
@@ -90,6 +97,32 @@ const Home = () => {
     t('更优价格，更强兼容'),
     t('简单配置，即刻使用'),
     t('多模型聚合，一站服务'),
+  ];
+  const featureCards = [
+    {
+      key: 'platform',
+      icon: IconAccessibility,
+      title: t('多平台支持'),
+      description: t(
+        '支持OpenAI、Anthropic Claude、Google Gemini等多个 AI 平台',
+      ),
+    },
+    {
+      key: 'security',
+      icon: IconBadgeStar,
+      title: t('安全管理'),
+      description: t(
+        '提供 API 密钥二次分发管理，支持 KEY 级额度控制，成本可控',
+      ),
+    },
+    {
+      key: 'service',
+      icon: IconTag,
+      title: t('一站式服务'),
+      description: t(
+        '多个 AI 平台聚合，统一出口 API 端点，便捷的一站式 AI 服务体验',
+      ),
+    },
   ];
 
   const displayHomePageContent = async () => {
@@ -376,6 +409,33 @@ const Home = () => {
                       </Typography.Text>
                     </div>
                   </div>
+                </div>
+
+                <div className='mt-16 md:mt-20 lg:mt-24 w-full max-w-6xl mx-auto px-4'>
+                  <Row gutter={[24, 24]}>
+                    {featureCards.map((card) => {
+                      const IconComponent = card.icon;
+                      return (
+                        <Col key={card.key} xs={24} sm={8}>
+                          <div className='feature-card text-center p-6 rounded-xl bg-semi-color-bg-2 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1'>
+                            <IconComponent
+                              size='extra-large'
+                              className='mb-4 text-semi-color-primary'
+                            />
+                            <Typography.Title
+                              heading={4}
+                              className='mb-3 text-semi-color-text-0'
+                            >
+                              {card.title}
+                            </Typography.Title>
+                            <Typography.Text className='text-semi-color-text-1'>
+                              {card.description}
+                            </Typography.Text>
+                          </div>
+                        </Col>
+                      );
+                    })}
+                  </Row>
                 </div>
               </div>
             </div>
