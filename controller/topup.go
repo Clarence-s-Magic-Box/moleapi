@@ -66,7 +66,7 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 		if !hasLantu {
 			lantuMethod := map[string]string{
-				"name":  "蓝兔支付",
+				"name":  "微信支付",
 				"type":  "lantu",
 				"color": "rgba(var(--semi-green-5), 1)",
 			}
