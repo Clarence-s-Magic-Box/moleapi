@@ -124,6 +124,26 @@ const Home = () => {
       ),
     },
   ];
+  const trustKeywords = isChinese
+    ? [
+        'MoleAPI 控制台',
+        '高速稳定',
+        '真实官方供应商',
+        '统一 API 接入',
+        '团队级额度与账单管理',
+        '支持企业开票',
+      ]
+    : [
+        'MoleAPI Console',
+        'Fast and stable',
+        'Official providers',
+        'Unified API access',
+        'Team billing and quota control',
+        'Invoice-ready payments',
+      ];
+  const trustSummary = isChinese
+    ? `${systemName} 是 MoleAPI 的控制台入口，专注于高速、稳定的大模型服务接入体验。平台统一接入 OpenAI、Anthropic、Google 等真实官方模型供应商能力，并提供密钥管理、额度控制、账单与充值能力。`
+    : `${systemName} is the MoleAPI console for fast, stable access to AI models. It connects teams to real official providers such as OpenAI, Anthropic, and Google with unified API access, billing, and quota management.`;
 
   const displayHomePageContent = async () => {
     setHomePageContent(localStorage.getItem('home_page_content') || '');
@@ -436,6 +456,22 @@ const Home = () => {
                       );
                     })}
                   </Row>
+                </div>
+
+                <div className='mt-10 md:mt-12 w-full max-w-5xl mx-auto px-4'>
+                  <div className='flex flex-wrap items-center justify-center gap-3'>
+                    {trustKeywords.map((keyword) => (
+                      <span
+                        key={keyword}
+                        className='px-4 py-2 rounded-full bg-semi-color-fill-0 text-semi-color-text-1 text-sm border border-semi-color-border'
+                      >
+                        {keyword}
+                      </span>
+                    ))}
+                  </div>
+                  <p className='mt-6 text-sm md:text-base leading-7 text-semi-color-text-1 max-w-4xl mx-auto'>
+                    {trustSummary}
+                  </p>
                 </div>
               </div>
             </div>

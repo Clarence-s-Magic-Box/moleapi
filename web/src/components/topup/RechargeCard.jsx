@@ -51,6 +51,13 @@ import SubscriptionPlansCard from './SubscriptionPlansCard';
 
 const { Text } = Typography;
 
+const getPayMethodDisplayName = (payMethod, t) => {
+  if (payMethod?.type === 'lantu') {
+    return t('微信支付');
+  }
+  return payMethod?.name || '';
+};
+
 const RechargeCard = ({
   t,
   enableOnlineTopUp,
@@ -522,6 +529,8 @@ const RechargeCard = ({
                                 <SiWechat size={18} />
                               ) : payMethod.type === 'stripe' ? (
                                 <SiStripe size={18} />
+                              ) : payMethod.type === 'lantu' ? (
+                                <SiWechat size={18} />
                               ) : (
                                 <CreditCard size={18} />
                               )
@@ -535,7 +544,7 @@ const RechargeCard = ({
                               ...(!disabled ? getPayBtnStyle(payMethod.type) : {}),
                             }}
                           >
-                            {payMethod.name}
+                            {getPayMethodDisplayName(payMethod, t)}
                           </Button>
                         );
 
@@ -593,6 +602,12 @@ const RechargeCard = ({
                         {t(
                           '充值金额越高，加赠比例越多，最高可获得40%额外奖励',
                         )}
+                      </Text>
+                      <Text
+                        type='tertiary'
+                        className='text-xs block text-center mt-2'
+                      >
+                        {t('充值支持按实付金额开票')}
                       </Text>
                     </Card>
                   </div>

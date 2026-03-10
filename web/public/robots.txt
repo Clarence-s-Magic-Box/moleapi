@@ -1,3 +1,7 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
 Disallow:
+Allow: /
+
+Host: home.moleapi.com
+Sitemap: https://home.moleapi.com/sitemap.xml

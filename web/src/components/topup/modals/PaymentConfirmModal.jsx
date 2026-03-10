@@ -24,6 +24,13 @@ import { CreditCard } from 'lucide-react';
 
 const { Text } = Typography;
 
+const getPayMethodDisplayName = (payMethod, t) => {
+  if (payMethod?.type === 'lantu') {
+    return t('微信支付');
+  }
+  return payMethod?.name || '';
+};
+
 const PaymentConfirmModal = ({
   t,
   open,
@@ -139,6 +146,12 @@ const PaymentConfirmModal = ({
                             size={16}
                             color='#07C160'
                           />
+                        ) : payMethod.type === 'lantu' ? (
+                          <SiWechat
+                            className='mr-2'
+                            size={16}
+                            color='#07C160'
+                          />
                         ) : payMethod.type === 'stripe' ? (
                           <SiStripe
                             className='mr-2'
@@ -155,7 +168,7 @@ const PaymentConfirmModal = ({
                           />
                         )}
                         <Text className='text-slate-900 dark:text-slate-100'>
-                          {payMethod.name}
+                          {getPayMethodDisplayName(payMethod, t)}
                         </Text>
                       </>
                     );

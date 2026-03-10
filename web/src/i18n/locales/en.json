@@ -2758,6 +2758,7 @@
     "订单已过期": "Order expired",
     "计算中...": "Calculating...",
     "微信支付": "WeChat Pay",
+    "充值支持按实付金额开票": "Invoices are available based on the actual paid amount",
     "我已支付完成": "I have completed payment",
     "支付二维码": "Payment QR code",
     "二维码加载中...": "Loading QR code...",
