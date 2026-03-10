@@ -24,17 +24,13 @@ import { getFooterHTML, getSystemName } from '../../helpers';
 import { StatusContext } from '../../context/Status';
 
 const FooterBar = () => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [footer, setFooter] = useState(getFooterHTML());
   const systemName = getSystemName();
   const [statusState] = useContext(StatusContext);
   const upstreamVersion =
     statusState?.status?.upstream_version || statusState?.status?.version || '';
   const projectVersion = statusState?.status?.project_version || '';
-  const brandingHint = i18n.language.startsWith('zh')
-    ? `${systemName} 是 MoleAPI 的大模型控制台，强调高速、稳定与真实官方供应商接入。`
-    : `${systemName} is the MoleAPI control console focused on fast, stable access to official model providers.`;
-
   const loadFooter = () => {
     let footer_html = localStorage.getItem('footer_html');
     if (footer_html) {
@@ -66,7 +62,6 @@ const FooterBar = () => {
           </div>
 
           <div className='text-xs !text-semi-color-text-1'>
-            <div className='footer-sub mb-1'>{brandingHint}</div>
             <div className='footer-sub'>
               Based on{' '}
               <a
@@ -116,9 +111,7 @@ const FooterBar = () => {
       </footer>
     );
   }, [
-    brandingHint,
     currentYear,
-    i18n.language,
     projectVersion,
     systemName,
     t,

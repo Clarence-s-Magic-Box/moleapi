@@ -598,7 +598,7 @@ const RechargeCard = ({
                           </div>
                         ))}
                       </div>
-                      <Text type='tertiary' className='text-xs block'>
+                      <Text type='tertiary' className='text-xs block text-center'>
                         {t(
                           '充值金额越高，加赠比例越多，最高可获得40%额外奖励',
                         )}
