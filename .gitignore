@@ -23,6 +23,7 @@ web/bun.lock
 plans
 .tmp/
 web/dist_prod/
+.claude
 
 electron/node_modules
 electron/dist
