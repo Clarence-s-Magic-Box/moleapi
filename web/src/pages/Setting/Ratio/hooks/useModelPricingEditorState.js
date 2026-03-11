@@ -16,6 +16,7 @@ const EMPTY_MODEL = {
   cachePrice: '',
   createCachePrice: '',
   imagePrice: '',
+  imageOutputPrice: '',
   audioInputPrice: '',
   audioOutputPrice: '',
   rawRatios: {
@@ -24,6 +25,7 @@ const EMPTY_MODEL = {
     cacheRatio: '',
     createCacheRatio: '',
     imageRatio: '',
+    imageOutputRatio: '',
     audioRatio: '',
     audioCompletionRatio: '',
   },
@@ -101,6 +103,7 @@ const buildModelState = (name, sourceMaps) => {
   const cacheRatio = toNumericString(sourceMaps.CacheRatio[name]);
   const createCacheRatio = toNumericString(sourceMaps.CreateCacheRatio[name]);
   const imageRatio = toNumericString(sourceMaps.ImageRatio[name]);
+  const imageOutputRatio = toNumericString(sourceMaps.ImageOutputRatio[name]);
   const audioRatio = toNumericString(sourceMaps.AudioRatio[name]);
   const audioCompletionRatio = toNumericString(
     sourceMaps.AudioCompletionRatio[name],
@@ -145,6 +148,10 @@ const buildModelState = (name, sourceMaps) => {
       inputPriceNumber !== null && hasValue(imageRatio)
         ? formatNumber(inputPriceNumber * Number(imageRatio))
         : '',
+    imageOutputPrice:
+      inputPriceNumber !== null && hasValue(imageOutputRatio)
+        ? formatNumber(inputPriceNumber * Number(imageOutputRatio))
+        : '',
     audioInputPrice,
     audioOutputPrice:
       toNumberOrNull(audioInputPrice) !== null && hasValue(audioCompletionRatio)
@@ -156,6 +163,7 @@ const buildModelState = (name, sourceMaps) => {
       cacheRatio,
       createCacheRatio,
       imageRatio,
+      imageOutputRatio,
       audioRatio,
       audioCompletionRatio,
     },
@@ -167,6 +175,7 @@ const buildModelState = (name, sourceMaps) => {
         cacheRatio,
         createCacheRatio,
         imageRatio,
+        imageOutputRatio,
         audioRatio,
         audioCompletionRatio,
       ].some(hasValue),
@@ -187,6 +196,7 @@ export const getModelWarnings = (model, t) => {
     model.cachePrice,
     model.createCachePrice,
     model.imagePrice,
+    model.imageOutputPrice,
     model.audioInputPrice,
     model.audioOutputPrice,
   ].some(hasValue);
@@ -202,6 +212,7 @@ export const getModelWarnings = (model, t) => {
       model.rawRatios.cacheRatio,
       model.rawRatios.createCacheRatio,
       model.rawRatios.imageRatio,
+      model.rawRatios.imageOutputRatio,
       model.rawRatios.audioRatio,
       model.rawRatios.audioCompletionRatio,
     ].some(hasValue)
@@ -253,6 +264,7 @@ export const buildOptionalFieldToggles = (model) => ({
   cachePrice: hasValue(model.cachePrice),
   createCachePrice: hasValue(model.createCachePrice),
   imagePrice: hasValue(model.imagePrice),
+  imageOutputPrice: hasValue(model.imageOutputPrice),
   audioInputPrice: hasValue(model.audioInputPrice),
   audioOutputPrice: hasValue(model.audioOutputPrice),
 });
@@ -265,6 +277,7 @@ const serializeModel = (model, t) => {
     CacheRatio: null,
     CreateCacheRatio: null,
     ImageRatio: null,
+    ImageOutputRatio: null,
     AudioRatio: null,
     AudioCompletionRatio: null,
   };
@@ -281,6 +294,7 @@ const serializeModel = (model, t) => {
   const cachePrice = toNumberOrNull(model.cachePrice);
   const createCachePrice = toNumberOrNull(model.createCachePrice);
   const imagePrice = toNumberOrNull(model.imagePrice);
+  const imageOutputPrice = toNumberOrNull(model.imageOutputPrice);
   const audioInputPrice = toNumberOrNull(model.audioInputPrice);
   const audioOutputPrice = toNumberOrNull(model.audioOutputPrice);
 
@@ -317,6 +331,9 @@ const serializeModel = (model, t) => {
     if (hasValue(model.rawRatios.imageRatio)) {
       result.ImageRatio = Number(model.rawRatios.imageRatio);
     }
+    if (hasValue(model.rawRatios.imageOutputRatio)) {
+      result.ImageOutputRatio = Number(model.rawRatios.imageOutputRatio);
+    }
     if (hasValue(model.rawRatios.audioRatio)) {
       result.AudioRatio = Number(model.rawRatios.audioRatio);
     }
@@ -344,6 +361,9 @@ const serializeModel = (model, t) => {
   }
   if (imagePrice !== null) {
     result.ImageRatio = imagePrice / inputPrice;
+  }
+  if (imageOutputPrice !== null) {
+    result.ImageOutputRatio = imageOutputPrice / inputPrice;
   }
   if (audioInputPrice !== null) {
     result.AudioRatio = audioInputPrice / inputPrice;
@@ -414,6 +434,13 @@ export const buildPreviewRows = (model, t) => {
           : t('空'),
       },
       {
+        key: 'ImageOutputRatio',
+        label: 'ImageOutputRatio',
+        value: hasValue(model.rawRatios.imageOutputRatio)
+          ? model.rawRatios.imageOutputRatio
+          : t('空'),
+      },
+      {
         key: 'AudioRatio',
         label: 'AudioRatio',
         value: hasValue(model.rawRatios.audioRatio)
@@ -434,6 +461,7 @@ export const buildPreviewRows = (model, t) => {
   const cachePrice = toNumberOrNull(model.cachePrice);
   const createCachePrice = toNumberOrNull(model.createCachePrice);
   const imagePrice = toNumberOrNull(model.imagePrice);
+  const imageOutputPrice = toNumberOrNull(model.imageOutputPrice);
   const audioInputPrice = toNumberOrNull(model.audioInputPrice);
   const audioOutputPrice = toNumberOrNull(model.audioOutputPrice);
 
@@ -469,6 +497,14 @@ export const buildPreviewRows = (model, t) => {
       key: 'ImageRatio',
       label: 'ImageRatio',
       value: imagePrice !== null ? formatNumber(imagePrice / inputPrice) : t('空'),
+    },
+    {
+      key: 'ImageOutputRatio',
+      label: 'ImageOutputRatio',
+      value:
+        imageOutputPrice !== null
+          ? formatNumber(imageOutputPrice / inputPrice)
+          : t('空'),
     },
     {
       key: 'AudioRatio',
@@ -515,6 +551,7 @@ export function useModelPricingEditorState({
       CacheRatio: parseOptionJSON(options.CacheRatio),
       CreateCacheRatio: parseOptionJSON(options.CreateCacheRatio),
       ImageRatio: parseOptionJSON(options.ImageRatio),
+      ImageOutputRatio: parseOptionJSON(options.ImageOutputRatio),
       AudioRatio: parseOptionJSON(options.AudioRatio),
       AudioCompletionRatio: parseOptionJSON(options.AudioCompletionRatio),
     };
@@ -528,6 +565,7 @@ export function useModelPricingEditorState({
       ...Object.keys(sourceMaps.CacheRatio),
       ...Object.keys(sourceMaps.CreateCacheRatio),
       ...Object.keys(sourceMaps.ImageRatio),
+      ...Object.keys(sourceMaps.ImageOutputRatio),
       ...Object.keys(sourceMaps.AudioRatio),
       ...Object.keys(sourceMaps.AudioCompletionRatio),
     ]);
@@ -703,6 +741,11 @@ export function useModelPricingEditorState({
         !hasValue(model.imagePrice) && hasValue(model.rawRatios.imageRatio)
           ? formatNumber(baseNumber * Number(model.rawRatios.imageRatio))
           : model.imagePrice,
+      imageOutputPrice:
+        !hasValue(model.imageOutputPrice) &&
+        hasValue(model.rawRatios.imageOutputRatio)
+          ? formatNumber(baseNumber * Number(model.rawRatios.imageOutputRatio))
+          : model.imageOutputPrice,
       audioInputPrice:
         !hasValue(model.audioInputPrice) && hasValue(model.rawRatios.audioRatio)
           ? formatNumber(baseNumber * Number(model.rawRatios.audioRatio))
@@ -812,6 +855,7 @@ export function useModelPricingEditorState({
           cachePrice: selectedModel.cachePrice,
           createCachePrice: selectedModel.createCachePrice,
           imagePrice: selectedModel.imagePrice,
+          imageOutputPrice: selectedModel.imageOutputPrice,
           audioInputPrice: selectedModel.audioInputPrice,
           audioOutputPrice: selectedModel.audioOutputPrice,
         };
@@ -842,6 +886,7 @@ export function useModelPricingEditorState({
           cachePrice: Boolean(sourceToggles.cachePrice),
           createCachePrice: Boolean(sourceToggles.createCachePrice),
           imagePrice: Boolean(sourceToggles.imagePrice),
+          imageOutputPrice: Boolean(sourceToggles.imageOutputPrice),
           audioInputPrice: Boolean(sourceToggles.audioInputPrice),
           audioOutputPrice:
             Boolean(sourceToggles.audioInputPrice) &&
@@ -870,6 +915,7 @@ export function useModelPricingEditorState({
         CacheRatio: {},
         CreateCacheRatio: {},
         ImageRatio: {},
+        ImageOutputRatio: {},
         AudioRatio: {},
         AudioCompletionRatio: {},
       };

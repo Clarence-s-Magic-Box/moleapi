@@ -449,6 +449,8 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 						usage.InputTokenDetails.AudioTokens += realtimeUsage.InputTokenDetails.AudioTokens
 						usage.InputTokenDetails.CachedTokens += realtimeUsage.InputTokenDetails.CachedTokens
 						usage.InputTokenDetails.TextTokens += realtimeUsage.InputTokenDetails.TextTokens
+						usage.InputTokenDetails.ImageTokens += realtimeUsage.InputTokenDetails.ImageTokens
+						usage.OutputTokenDetails.ImageTokens += realtimeUsage.OutputTokenDetails.ImageTokens
 						usage.OutputTokenDetails.AudioTokens += realtimeUsage.OutputTokenDetails.AudioTokens
 						usage.OutputTokenDetails.TextTokens += realtimeUsage.OutputTokenDetails.TextTokens
 						err := preConsumeUsage(c, info, usage, sumUsage)
@@ -552,6 +554,8 @@ func preConsumeUsage(ctx *gin.Context, info *relaycommon.RelayInfo, usage *dto.R
 	totalUsage.InputTokenDetails.CachedTokens += usage.InputTokenDetails.CachedTokens
 	totalUsage.InputTokenDetails.TextTokens += usage.InputTokenDetails.TextTokens
 	totalUsage.InputTokenDetails.AudioTokens += usage.InputTokenDetails.AudioTokens
+	totalUsage.InputTokenDetails.ImageTokens += usage.InputTokenDetails.ImageTokens
+	totalUsage.OutputTokenDetails.ImageTokens += usage.OutputTokenDetails.ImageTokens
 	totalUsage.OutputTokenDetails.TextTokens += usage.OutputTokenDetails.TextTokens
 	totalUsage.OutputTokenDetails.AudioTokens += usage.OutputTokenDetails.AudioTokens
 	// clear usage

@@ -183,6 +183,8 @@ var defaultModelRatio = map[string]float64{
 	"gemini-2.5-flash-lite-preview-thinking-*":  0.05,
 	"gemini-2.5-flash-lite-preview-06-17":       0.05,
 	"gemini-2.5-flash":                          0.15,
+	"gemini-3.1-flash-image-preview":            0.25,
+	"gemini-3-pro-image-preview":                1.0,
 	"gemini-robotics-er-1.5-preview":            0.15,
 	"gemini-embedding-001":                      0.075,
 	"text-embedding-004":                        0.001,
@@ -327,10 +329,12 @@ var modelRatioMap = types.NewRWMap[string, float64]()
 var completionRatioMap = types.NewRWMap[string, float64]()
 
 var defaultCompletionRatio = map[string]float64{
-	"gpt-4-gizmo-*":  2,
-	"gpt-4o-gizmo-*": 3,
-	"gpt-4-all":      2,
-	"gpt-image-1":    8,
+	"gpt-4-gizmo-*":                  2,
+	"gpt-4o-gizmo-*":                 3,
+	"gpt-4-all":                      2,
+	"gpt-image-1":                    8,
+	"gemini-3.1-flash-image-preview": 6,
+	"gemini-3-pro-image-preview":     6,
 }
 
 // InitRatioSettings initializes all model related settings maps
@@ -341,6 +345,7 @@ func InitRatioSettings() {
 	cacheRatioMap.AddAll(defaultCacheRatio)
 	createCacheRatioMap.AddAll(defaultCreateCacheRatio)
 	imageRatioMap.AddAll(defaultImageRatio)
+	imageOutputRatioMap.AddAll(defaultImageOutputRatio)
 	audioRatioMap.AddAll(defaultAudioRatio)
 	audioCompletionRatioMap.AddAll(defaultAudioCompletionRatio)
 }
@@ -647,9 +652,16 @@ func ModelRatio2JSONString() string {
 }
 
 var defaultImageRatio = map[string]float64{
-	"gpt-image-1": 2,
+	"gpt-image-1":                    2,
+	"gemini-3.1-flash-image-preview": 1,
+	"gemini-3-pro-image-preview":     1,
+}
+var defaultImageOutputRatio = map[string]float64{
+	"gemini-3.1-flash-image-preview": 120,
+	"gemini-3-pro-image-preview":     60,
 }
 var imageRatioMap = types.NewRWMap[string, float64]()
+var imageOutputRatioMap = types.NewRWMap[string, float64]()
 var audioRatioMap = types.NewRWMap[string, float64]()
 var audioCompletionRatioMap = types.NewRWMap[string, float64]()
 
@@ -658,13 +670,31 @@ func ImageRatio2JSONString() string {
 }
 
 func UpdateImageRatioByJSONString(jsonStr string) error {
-	return types.LoadFromJsonString(imageRatioMap, jsonStr)
+	return types.LoadFromJsonStringWithCallback(imageRatioMap, jsonStr, InvalidateExposedDataCache)
 }
 
 func GetImageRatio(name string) (float64, bool) {
+	name = FormatMatchingModelName(name)
 	ratio, ok := imageRatioMap.Get(name)
 	if !ok {
 		return 1, false // Default to 1 if not found
+	}
+	return ratio, true
+}
+
+func ImageOutputRatio2JSONString() string {
+	return imageOutputRatioMap.MarshalJSONString()
+}
+
+func UpdateImageOutputRatioByJSONString(jsonStr string) error {
+	return types.LoadFromJsonStringWithCallback(imageOutputRatioMap, jsonStr, InvalidateExposedDataCache)
+}
+
+func GetImageOutputRatio(name string) (float64, bool) {
+	name = FormatMatchingModelName(name)
+	ratio, ok := imageOutputRatioMap.Get(name)
+	if !ok {
+		return 0, false
 	}
 	return ratio, true
 }
