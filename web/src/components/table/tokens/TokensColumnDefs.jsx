@@ -323,7 +323,7 @@ const renderQuotaUsage = (text, record, t) => {
 const renderOperations = (
   text,
   record,
-  copyText,
+  copyTokenKey,
   onOpenLink,
   setEditingToken,
   setShowEdit,
@@ -363,7 +363,7 @@ const renderOperations = (
           size='small'
           type='tertiary'
           onClick={async () => {
-            await copyText(`sk-${record.key}`);
+            await copyTokenKey(record);
           }}
         >
           {t('复制')}
@@ -442,7 +442,6 @@ export const getTokensColumns = ({
   loadingTokenKeys,
   toggleTokenVisibility,
   copyTokenKey,
-  copyText,
   manageToken,
   onOpenLink,
   setEditingToken,
@@ -521,7 +520,7 @@ export const getTokensColumns = ({
         renderOperations(
           text,
           record,
-          copyText,
+          copyTokenKey,
           onOpenLink,
           setEditingToken,
           setShowEdit,
