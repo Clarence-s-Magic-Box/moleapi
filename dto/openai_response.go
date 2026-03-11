@@ -258,6 +258,7 @@ type InputTokenDetails struct {
 }
 
 type OutputTokenDetails struct {
+	ImageTokens     int `json:"image_tokens"`
 	TextTokens      int `json:"text_tokens"`
 	AudioTokens     int `json:"audio_tokens"`
 	ReasoningTokens int `json:"reasoning_tokens"`

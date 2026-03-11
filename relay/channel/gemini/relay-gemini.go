@@ -1060,6 +1060,8 @@ func buildUsageFromGeminiMetadata(metadata dto.GeminiUsageMetadata, fallbackProm
 	for _, detail := range metadata.PromptTokensDetails {
 		if detail.Modality == "AUDIO" {
 			usage.PromptTokensDetails.AudioTokens += detail.TokenCount
+		} else if detail.Modality == "IMAGE" {
+			usage.PromptTokensDetails.ImageTokens += detail.TokenCount
 		} else if detail.Modality == "TEXT" {
 			usage.PromptTokensDetails.TextTokens += detail.TokenCount
 		}
@@ -1067,8 +1069,19 @@ func buildUsageFromGeminiMetadata(metadata dto.GeminiUsageMetadata, fallbackProm
 	for _, detail := range metadata.ToolUsePromptTokensDetails {
 		if detail.Modality == "AUDIO" {
 			usage.PromptTokensDetails.AudioTokens += detail.TokenCount
+		} else if detail.Modality == "IMAGE" {
+			usage.PromptTokensDetails.ImageTokens += detail.TokenCount
 		} else if detail.Modality == "TEXT" {
 			usage.PromptTokensDetails.TextTokens += detail.TokenCount
+		}
+	}
+	for _, detail := range metadata.CandidatesTokensDetails {
+		if detail.Modality == "AUDIO" {
+			usage.CompletionTokenDetails.AudioTokens += detail.TokenCount
+		} else if detail.Modality == "IMAGE" {
+			usage.CompletionTokenDetails.ImageTokens += detail.TokenCount
+		} else if detail.Modality == "TEXT" {
+			usage.CompletionTokenDetails.TextTokens += detail.TokenCount
 		}
 	}
 
@@ -1076,11 +1089,153 @@ func buildUsageFromGeminiMetadata(metadata dto.GeminiUsageMetadata, fallbackProm
 		usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
 	}
 
-	if usage.PromptTokens > 0 && usage.PromptTokensDetails.TextTokens == 0 && usage.PromptTokensDetails.AudioTokens == 0 {
+	if usage.PromptTokens > 0 &&
+		usage.PromptTokensDetails.TextTokens == 0 &&
+		usage.PromptTokensDetails.AudioTokens == 0 &&
+		usage.PromptTokensDetails.ImageTokens == 0 {
 		usage.PromptTokensDetails.TextTokens = usage.PromptTokens
+	}
+	if usage.CompletionTokens > 0 &&
+		usage.CompletionTokenDetails.TextTokens == 0 &&
+		usage.CompletionTokenDetails.AudioTokens == 0 &&
+		usage.CompletionTokenDetails.ImageTokens == 0 {
+		usage.CompletionTokenDetails.TextTokens = usage.CompletionTokens - usage.CompletionTokenDetails.ReasoningTokens
+		if usage.CompletionTokenDetails.TextTokens < 0 {
+			usage.CompletionTokenDetails.TextTokens = 0
+		}
 	}
 
 	return usage
+}
+
+func normalizeGeminiImageSize(imageSize string) string {
+	size := strings.ToUpper(strings.TrimSpace(imageSize))
+	size = strings.TrimPrefix(size, "IMAGE_SIZE_")
+	switch size {
+	case "0_5K", "0.5K", "05K":
+		return "0.5K"
+	case "1K":
+		return "1K"
+	case "2K":
+		return "2K"
+	case "4K":
+		return "4K"
+	default:
+		return size
+	}
+}
+
+func extractGeminiImageSizeFromRaw(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+
+	var payload map[string]interface{}
+	if err := common.Unmarshal(raw, &payload); err != nil {
+		return ""
+	}
+
+	if value, ok := payload["imageSize"].(string); ok {
+		return normalizeGeminiImageSize(value)
+	}
+	if value, ok := payload["image_size"].(string); ok {
+		return normalizeGeminiImageSize(value)
+	}
+	return ""
+}
+
+func extractGeminiImageSizeFromOpenAIExtraBody(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+
+	var payload map[string]interface{}
+	if err := common.Unmarshal(raw, &payload); err != nil {
+		return ""
+	}
+
+	googleBody, ok := payload["google"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	if imageConfig, ok := googleBody["image_config"].(map[string]interface{}); ok {
+		if value, ok := imageConfig["image_size"].(string); ok {
+			return normalizeGeminiImageSize(value)
+		}
+		if value, ok := imageConfig["imageSize"].(string); ok {
+			return normalizeGeminiImageSize(value)
+		}
+	}
+
+	if imageConfig, ok := googleBody["imageConfig"].(map[string]interface{}); ok {
+		if value, ok := imageConfig["imageSize"].(string); ok {
+			return normalizeGeminiImageSize(value)
+		}
+		if value, ok := imageConfig["image_size"].(string); ok {
+			return normalizeGeminiImageSize(value)
+		}
+	}
+
+	return ""
+}
+
+func getGeminiRequestedImageSize(info *relaycommon.RelayInfo) string {
+	if info == nil || info.Request == nil {
+		return ""
+	}
+
+	switch request := info.Request.(type) {
+	case *dto.GeminiChatRequest:
+		return extractGeminiImageSizeFromRaw(request.GenerationConfig.ImageConfig)
+	case *dto.GeneralOpenAIRequest:
+		return extractGeminiImageSizeFromOpenAIExtraBody(request.ExtraBody)
+	default:
+		return ""
+	}
+}
+
+func getGeminiImageOutputTokensPerImage(modelName string, imageSize string) (int, bool) {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	imageSize = normalizeGeminiImageSize(imageSize)
+	if imageSize == "" {
+		imageSize = "1K"
+	}
+
+	switch {
+	case strings.HasPrefix(modelName, "gemini-3.1-flash-image-preview"):
+		switch imageSize {
+		case "0.5K":
+			return 747, true
+		case "1K":
+			return 1120, true
+		case "2K":
+			return 1680, true
+		case "4K":
+			return 2520, true
+		}
+	case strings.HasPrefix(modelName, "gemini-3-pro-image-preview"):
+		switch imageSize {
+		case "1K", "2K":
+			return 1210, true
+		case "4K":
+			return 2000, true
+		}
+	}
+
+	return 0, false
+}
+
+func estimateGeminiImageOutputTokensFromRequest(info *relaycommon.RelayInfo, imageCount int) int {
+	if info == nil || imageCount <= 0 {
+		return 0
+	}
+
+	perImageTokens, ok := getGeminiImageOutputTokensPerImage(info.OriginModelName, getGeminiRequestedImageSize(info))
+	if !ok || perImageTokens <= 0 {
+		return 0
+	}
+	return perImageTokens * imageCount
 }
 
 func responseGeminiChat2OpenAI(c *gin.Context, response *dto.GeminiChatResponse) *dto.OpenAITextResponse {
@@ -1331,9 +1486,31 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	})
 
 	if imageCount != 0 {
-		if usage.CompletionTokens == 0 {
-			usage.CompletionTokens = imageCount * 1400
+		if usage.CompletionTokenDetails.ImageTokens == 0 {
+			usage.CompletionTokenDetails.ImageTokens = estimateGeminiImageOutputTokensFromRequest(info, imageCount)
 		}
+		if usage.CompletionTokens == 0 {
+			usage.CompletionTokens = usage.CompletionTokenDetails.ImageTokens
+		}
+	}
+
+	if usage.TotalTokens == 0 && responseText.Len() > 0 {
+		if usage.CompletionTokenDetails.TextTokens == 0 {
+			usage.CompletionTokenDetails.TextTokens = service.CountTextToken(responseText.String(), info.UpstreamModelName)
+		}
+		if usage.CompletionTokens == 0 || usage.CompletionTokens == usage.CompletionTokenDetails.ImageTokens {
+			usage.CompletionTokens = usage.CompletionTokenDetails.ImageTokens +
+				usage.CompletionTokenDetails.TextTokens +
+				usage.CompletionTokenDetails.AudioTokens +
+				usage.CompletionTokenDetails.ReasoningTokens
+		}
+	}
+
+	if usage.PromptTokens == 0 && usage.CompletionTokens > 0 {
+		usage.PromptTokens = info.GetEstimatePromptTokens()
+	}
+	if usage.TotalTokens == 0 && (usage.PromptTokens > 0 || usage.CompletionTokens > 0) {
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
 
 	if usage.CompletionTokens <= 0 {

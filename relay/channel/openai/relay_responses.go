@@ -51,7 +51,14 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		usage.TotalTokens = responsesResponse.Usage.TotalTokens
 		if responsesResponse.Usage.InputTokensDetails != nil {
 			usage.PromptTokensDetails.CachedTokens = responsesResponse.Usage.InputTokensDetails.CachedTokens
+			usage.PromptTokensDetails.TextTokens = responsesResponse.Usage.InputTokensDetails.TextTokens
+			usage.PromptTokensDetails.ImageTokens = responsesResponse.Usage.InputTokensDetails.ImageTokens
+			usage.PromptTokensDetails.AudioTokens = responsesResponse.Usage.InputTokensDetails.AudioTokens
 		}
+		usage.CompletionTokenDetails.TextTokens = responsesResponse.Usage.CompletionTokenDetails.TextTokens
+		usage.CompletionTokenDetails.ImageTokens = responsesResponse.Usage.CompletionTokenDetails.ImageTokens
+		usage.CompletionTokenDetails.AudioTokens = responsesResponse.Usage.CompletionTokenDetails.AudioTokens
+		usage.CompletionTokenDetails.ReasoningTokens = responsesResponse.Usage.CompletionTokenDetails.ReasoningTokens
 	}
 	if info == nil || info.ResponsesUsageInfo == nil || info.ResponsesUsageInfo.BuiltInTools == nil {
 		return &usage, nil
@@ -100,7 +107,14 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 						}
 						if streamResponse.Response.Usage.InputTokensDetails != nil {
 							usage.PromptTokensDetails.CachedTokens = streamResponse.Response.Usage.InputTokensDetails.CachedTokens
+							usage.PromptTokensDetails.TextTokens = streamResponse.Response.Usage.InputTokensDetails.TextTokens
+							usage.PromptTokensDetails.ImageTokens = streamResponse.Response.Usage.InputTokensDetails.ImageTokens
+							usage.PromptTokensDetails.AudioTokens = streamResponse.Response.Usage.InputTokensDetails.AudioTokens
 						}
+						usage.CompletionTokenDetails.TextTokens = streamResponse.Response.Usage.CompletionTokenDetails.TextTokens
+						usage.CompletionTokenDetails.ImageTokens = streamResponse.Response.Usage.CompletionTokenDetails.ImageTokens
+						usage.CompletionTokenDetails.AudioTokens = streamResponse.Response.Usage.CompletionTokenDetails.AudioTokens
+						usage.CompletionTokenDetails.ReasoningTokens = streamResponse.Response.Usage.CompletionTokenDetails.ReasoningTokens
 					}
 					if streamResponse.Response.HasImageGenerationCall() {
 						c.Set("image_generation_call", true)

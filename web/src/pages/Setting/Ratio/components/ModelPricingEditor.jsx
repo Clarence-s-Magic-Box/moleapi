@@ -582,6 +582,44 @@ export default function ModelPricingEditor({
                         }
                       />
                       <PriceInput
+                        label={t('图片输出价格')}
+                        value={selectedModel.imageOutputPrice}
+                        placeholder={t('输入 $/1M tokens')}
+                        onChange={(value) =>
+                          handleNumericFieldChange('imageOutputPrice', value)
+                        }
+                        headerAction={
+                          <Switch
+                            size='small'
+                            checked={isOptionalFieldEnabled(
+                              selectedModel,
+                              'imageOutputPrice',
+                            )}
+                            onChange={(checked) =>
+                              handleOptionalFieldToggle(
+                                'imageOutputPrice',
+                                checked,
+                              )
+                            }
+                          />
+                        }
+                        hidden={
+                          !isOptionalFieldEnabled(
+                            selectedModel,
+                            'imageOutputPrice',
+                          )
+                        }
+                        disabled={!hasValue(selectedModel.inputPrice)}
+                        extraText={
+                          !isOptionalFieldEnabled(
+                            selectedModel,
+                            'imageOutputPrice',
+                          )
+                            ? t('当前未启用，需要时再打开即可。')
+                            : ''
+                        }
+                      />
+                      <PriceInput
                         label={t('音频输入价格')}
                         value={selectedModel.audioInputPrice}
                         placeholder={t('输入 $/1M tokens')}
