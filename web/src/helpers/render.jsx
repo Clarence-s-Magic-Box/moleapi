@@ -1252,6 +1252,49 @@ function renderDisplayAmountFromUsd(usdAmount, digits = 6) {
   return renderQuotaWithAmount(Number(Number(usdAmount || 0).toFixed(digits)));
 }
 
+function normalizeTokenCount(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) {
+    return 0;
+  }
+  return num;
+}
+
+function getTokenDetailTotal(values = []) {
+  return values.reduce((sum, value) => sum + normalizeTokenCount(value), 0);
+}
+
+function areTokenDetailsSplitFromTotal(
+  totalTokens,
+  detailTokens = [],
+  explicitSplit = false,
+) {
+  if (explicitSplit) {
+    return true;
+  }
+  const total = normalizeTokenCount(totalTokens);
+  return getTokenDetailTotal(detailTokens) > total;
+}
+
+function getBaseTokensFromTotal(
+  totalTokens,
+  detailTokens = [],
+  explicitBaseTokens = 0,
+  explicitSplit = false,
+) {
+  const baseTokens = normalizeTokenCount(explicitBaseTokens);
+  if (baseTokens > 0) {
+    return baseTokens;
+  }
+
+  const total = normalizeTokenCount(totalTokens);
+  if (areTokenDetailsSplitFromTotal(total, detailTokens, explicitSplit)) {
+    return total;
+  }
+
+  return Math.max(total - getTokenDetailTotal(detailTokens), 0);
+}
+
 // Shared core for simple price rendering (used by OpenAI-like and Claude-like variants)
 function renderPriceSimpleCore({
   modelRatio,
@@ -1436,7 +1479,9 @@ export function renderModelPrice(
   cacheRatio = 1.0,
   image = false,
   imageRatio = 1.0,
+  imageInputTokens = 0,
   imageOutputTokens = 0,
+  imageOutputRatio = 0,
   webSearch = false,
   webSearchCallCount = 0,
   webSearchPrice = 0,
@@ -1448,6 +1493,11 @@ export function renderModelPrice(
   audioInputPrice = 0,
   imageGenerationCall = false,
   imageGenerationCallPrice = 0,
+  textInputTokens = 0,
+  textOutputTokens = 0,
+  reasoningOutputTokens = 0,
+  inputModalitySplit = false,
+  outputModalitySplit = false,
   displayMode = 'price',
 ) {
   const { ratio: effectiveGroupRatio, label: ratioLabel } = getEffectiveRatio(
@@ -1494,19 +1544,37 @@ export function renderModelPrice(
     const completionRatioPrice = modelRatio * 2.0 * completionRatio;
     const cacheRatioPrice = modelRatio * 2.0 * cacheRatio;
     const imageRatioPrice = modelRatio * 2.0 * imageRatio;
-    let effectiveInputTokens =
-      inputTokens - cacheTokens + cacheTokens * cacheRatio;
-    if (image && imageOutputTokens > 0) {
-      effectiveInputTokens =
-        inputTokens - imageOutputTokens + imageOutputTokens * imageRatio;
-    }
-    if (audioInputTokens > 0) {
-      effectiveInputTokens -= audioInputTokens;
-    }
+    const imageOutputRatioPrice =
+      modelRatio * 2.0 * (imageOutputRatio > 0 ? imageOutputRatio : completionRatio);
+    const normalizedCacheTokens = normalizeTokenCount(cacheTokens);
+    const normalizedImageInputTokens = normalizeTokenCount(imageInputTokens);
+    const normalizedImageOutputTokens = normalizeTokenCount(imageOutputTokens);
+    const normalizedAudioInputTokens = normalizeTokenCount(audioInputTokens);
+    const normalizedTextInputTokens = getBaseTokensFromTotal(
+      inputTokens,
+      [normalizedCacheTokens, normalizedImageInputTokens, normalizedAudioInputTokens],
+      textInputTokens,
+      inputModalitySplit,
+    );
+    const explicitCompletionTokens =
+      normalizeTokenCount(textOutputTokens) + normalizeTokenCount(reasoningOutputTokens);
+    const normalizedCompletionBaseTokens = getBaseTokensFromTotal(
+      completionTokens,
+      [normalizedImageOutputTokens],
+      explicitCompletionTokens,
+      outputModalitySplit,
+    );
     const price =
-      (effectiveInputTokens / 1000000) * inputRatioPrice * groupRatio +
-      (audioInputTokens / 1000000) * audioInputPrice * groupRatio +
-      (completionTokens / 1000000) * completionRatioPrice * groupRatio +
+      (normalizedTextInputTokens / 1000000) * inputRatioPrice * groupRatio +
+      (normalizedCacheTokens / 1000000) * cacheRatioPrice * groupRatio +
+      (normalizedImageInputTokens / 1000000) * imageRatioPrice * groupRatio +
+      (normalizedAudioInputTokens / 1000000) * audioInputPrice * groupRatio +
+      (normalizedCompletionBaseTokens / 1000000) *
+        completionRatioPrice *
+        groupRatio +
+      (normalizedImageOutputTokens / 1000000) *
+        imageOutputRatioPrice *
+        groupRatio +
       (webSearchCallCount / 1000) * webSearchPrice * groupRatio +
       (fileSearchCallCount / 1000) * fileSearchPrice * groupRatio +
       imageGenerationCallPrice * groupRatio;
@@ -1529,7 +1597,7 @@ export function renderModelPrice(
               total: (completionRatioPrice * rate).toFixed(6),
             })}
           </p>
-          {cacheTokens > 0 && (
+          {normalizedCacheTokens > 0 && (
             <p>
               {i18next.t('缓存读取价格：{{symbol}}{{total}} / 1M tokens', {
                 symbol,
@@ -1537,11 +1605,19 @@ export function renderModelPrice(
               })}
             </p>
           )}
-          {image && imageOutputTokens > 0 && (
+          {normalizedImageInputTokens > 0 && (
             <p>
               {i18next.t('图片输入价格：{{symbol}}{{total}} / 1M tokens', {
                 symbol,
                 total: (imageRatioPrice * rate).toFixed(6),
+              })}
+            </p>
+          )}
+          {normalizedImageOutputTokens > 0 && (
+            <p>
+              {i18next.t('图片输出价格：{{symbol}}{{total}} / 1M tokens', {
+                symbol,
+                total: (imageOutputRatioPrice * rate).toFixed(6),
               })}
             </p>
           )}
@@ -1571,60 +1647,82 @@ export function renderModelPrice(
           )}
           <p>
             {(() => {
-              let inputDesc = '';
-              if (image && imageOutputTokens > 0) {
-                inputDesc = i18next.t(
-                  '(输入 {{nonImageInput}} tokens + 图片输入 {{imageInput}} tokens / 1M tokens * {{symbol}}{{price}}',
-                  {
-                    nonImageInput: inputTokens - imageOutputTokens,
-                    imageInput: imageOutputTokens,
-                    symbol: symbol,
+              const inputSegments = [];
+              const outputSegments = [];
+
+              if (normalizedTextInputTokens > 0 || inputTokens > 0) {
+                inputSegments.push(
+                  i18next.t('输入 {{input}} tokens / 1M tokens * {{symbol}}{{price}}', {
+                    input: normalizedTextInputTokens,
+                    symbol,
                     price: (inputRatioPrice * rate).toFixed(6),
-                  },
+                  }),
                 );
-              } else if (cacheTokens > 0) {
-                inputDesc = i18next.t(
-                  '(输入 {{nonCacheInput}} tokens / 1M tokens * {{symbol}}{{price}} + 缓存 {{cacheInput}} tokens / 1M tokens * {{symbol}}{{cachePrice}}',
-                  {
-                    nonCacheInput: inputTokens - cacheTokens,
-                    cacheInput: cacheTokens,
-                    symbol: symbol,
-                    price: (inputRatioPrice * rate).toFixed(6),
-                    cachePrice: (cacheRatioPrice * rate).toFixed(6),
-                  },
+              }
+              if (normalizedCacheTokens > 0) {
+                inputSegments.push(
+                  i18next.t(
+                    '缓存 {{cacheInput}} tokens / 1M tokens * {{symbol}}{{cachePrice}}',
+                    {
+                      cacheInput: normalizedCacheTokens,
+                      symbol,
+                      cachePrice: (cacheRatioPrice * rate).toFixed(6),
+                    },
+                  ),
                 );
-              } else if (audioInputSeperatePrice && audioInputTokens > 0) {
-                inputDesc = i18next.t(
-                  '(输入 {{nonAudioInput}} tokens / 1M tokens * {{symbol}}{{price}} + 音频输入 {{audioInput}} tokens / 1M tokens * {{symbol}}{{audioPrice}}',
-                  {
-                    nonAudioInput: inputTokens - audioInputTokens,
-                    audioInput: audioInputTokens,
-                    symbol: symbol,
-                    price: (inputRatioPrice * rate).toFixed(6),
-                    audioPrice: (audioInputPrice * rate).toFixed(6),
-                  },
+              }
+              if (normalizedImageInputTokens > 0) {
+                inputSegments.push(
+                  i18next.t(
+                    '图片输入 {{imageInput}} tokens / 1M tokens * {{symbol}}{{imagePrice}}',
+                    {
+                      imageInput: normalizedImageInputTokens,
+                      symbol,
+                      imagePrice: (imageRatioPrice * rate).toFixed(6),
+                    },
+                  ),
                 );
-              } else {
-                inputDesc = i18next.t(
-                  '(输入 {{input}} tokens / 1M tokens * {{symbol}}{{price}}',
-                  {
-                    input: inputTokens,
-                    symbol: symbol,
-                    price: (inputRatioPrice * rate).toFixed(6),
-                  },
+              }
+              if (audioInputSeperatePrice && normalizedAudioInputTokens > 0) {
+                inputSegments.push(
+                  i18next.t(
+                    '音频输入 {{audioInput}} tokens / 1M tokens * {{symbol}}{{audioPrice}}',
+                    {
+                      audioInput: normalizedAudioInputTokens,
+                      symbol,
+                      audioPrice: (audioInputPrice * rate).toFixed(6),
+                    },
+                  ),
                 );
               }
 
-              const outputDesc = i18next.t(
-                '输出 {{completion}} tokens / 1M tokens * {{symbol}}{{compPrice}}) * {{ratioType}} {{ratio}}',
-                {
-                  completion: completionTokens,
-                  symbol: symbol,
-                  compPrice: (completionRatioPrice * rate).toFixed(6),
-                  ratio: groupRatio,
-                  ratioType: ratioLabel,
-                },
-              );
+              if (normalizedCompletionBaseTokens > 0 || completionTokens > 0) {
+                outputSegments.push(
+                  i18next.t(
+                    '输出 {{completion}} tokens / 1M tokens * {{symbol}}{{compPrice}}',
+                    {
+                      completion: normalizedCompletionBaseTokens,
+                      symbol,
+                      compPrice: (completionRatioPrice * rate).toFixed(6),
+                    },
+                  ),
+                );
+              }
+              if (normalizedImageOutputTokens > 0) {
+                outputSegments.push(
+                  i18next.t(
+                    '图片输出 {{completion}} tokens / 1M tokens * {{symbol}}{{compPrice}}',
+                    {
+                      completion: normalizedImageOutputTokens,
+                      symbol,
+                      compPrice: (imageOutputRatioPrice * rate).toFixed(6),
+                    },
+                  ),
+                );
+              }
+
+              const inputDesc = `(${inputSegments.join(' + ')}`;
+              const outputDesc = `${outputSegments.join(' + ')}) * ${ratioLabel} ${groupRatio}`;
 
               const extraServices = [
                 webSearch && webSearchCallCount > 0
@@ -1705,33 +1803,56 @@ export function renderModelPrice(
   const completionRatioValue = formatRatioValue(completionRatio);
   const cacheRatioValue = formatRatioValue(cacheRatio);
   const imageRatioValue = formatRatioValue(imageRatio);
+  const imageOutputRatioValue = formatRatioValue(
+    imageOutputRatio > 0 ? imageOutputRatio : completionRatioValue,
+  );
   const inputRatioPrice = modelRatio * 2.0;
   const completionRatioPrice = modelRatio * 2.0 * completionRatioValue;
+  const imageOutputRatioPrice = modelRatio * 2.0 * imageOutputRatioValue;
   const audioRatioValue =
     audioInputSeperatePrice && audioInputPrice > 0
       ? formatRatioValue(audioInputPrice / inputRatioPrice)
       : null;
 
-  const textInputTokens = Math.max(inputTokens - cacheTokens - audioInputTokens, 0);
-  const imageInputTokens = image && imageOutputTokens > 0 ? imageOutputTokens : 0;
-  const cacheInputTokens = cacheTokens;
+  const normalizedCacheTokens = normalizeTokenCount(cacheTokens);
+  const normalizedImageInputTokens = normalizeTokenCount(imageInputTokens);
+  const normalizedImageOutputTokens = normalizeTokenCount(imageOutputTokens);
+  const normalizedAudioInputTokens = normalizeTokenCount(audioInputTokens);
+  const normalizedTextInputTokens = getBaseTokensFromTotal(
+    inputTokens,
+    [normalizedCacheTokens, normalizedImageInputTokens, normalizedAudioInputTokens],
+    textInputTokens,
+    inputModalitySplit,
+  );
+  const normalizedCompletionBaseTokens = getBaseTokensFromTotal(
+    completionTokens,
+    [normalizedImageOutputTokens],
+    normalizeTokenCount(textOutputTokens) + normalizeTokenCount(reasoningOutputTokens),
+    outputModalitySplit,
+  );
 
   const textInputAmount =
-    (textInputTokens / 1000000) * inputRatioPrice * groupRatio;
+    (normalizedTextInputTokens / 1000000) * inputRatioPrice * groupRatio;
   const cacheInputAmount =
-    (cacheInputTokens / 1000000) *
+    (normalizedCacheTokens / 1000000) *
     inputRatioPrice *
     cacheRatioValue *
     groupRatio;
   const imageInputAmount =
-    (imageInputTokens / 1000000) *
+    (normalizedImageInputTokens / 1000000) *
     inputRatioPrice *
     imageRatioValue *
     groupRatio;
   const audioInputAmount =
-    (audioInputTokens / 1000000) * audioInputPrice * groupRatio;
+    (normalizedAudioInputTokens / 1000000) * audioInputPrice * groupRatio;
   const completionAmount =
-    (completionTokens / 1000000) * completionRatioPrice * groupRatio;
+    (normalizedCompletionBaseTokens / 1000000) *
+    completionRatioPrice *
+    groupRatio;
+  const imageOutputAmount =
+    (normalizedImageOutputTokens / 1000000) *
+    imageOutputRatioPrice *
+    groupRatio;
   const webSearchAmount = (webSearchCallCount / 1000) * webSearchPrice * groupRatio;
   const fileSearchAmount =
     (fileSearchCallCount / 1000) * fileSearchPrice * groupRatio;
@@ -1743,6 +1864,7 @@ export function renderModelPrice(
     imageInputAmount +
     audioInputAmount +
     completionAmount +
+    imageOutputAmount +
     webSearchAmount +
     fileSearchAmount +
     imageGenerationAmount;
@@ -1758,14 +1880,19 @@ export function renderModelPrice(
             i18next.t('补全倍率 {{completionRatio}}', {
               completionRatio: completionRatioValue,
             }),
-            cacheInputTokens > 0
+            normalizedCacheTokens > 0
               ? i18next.t('缓存倍率 {{cacheRatio}}', {
                   cacheRatio: cacheRatioValue,
                 })
               : null,
-            imageInputTokens > 0
+            normalizedImageInputTokens > 0
               ? i18next.t('图片倍率 {{imageRatio}}', {
                   imageRatio: imageRatioValue,
+                })
+              : null,
+            normalizedImageOutputTokens > 0
+              ? i18next.t('图片输出倍率 {{imageOutputRatio}}', {
+                  imageOutputRatio: imageOutputRatioValue,
                 })
               : null,
             audioRatioValue !== null
@@ -1781,12 +1908,12 @@ export function renderModelPrice(
             .filter(Boolean)
             .join('，')}
         </p>
-        {textInputTokens > 0 && (
+        {normalizedTextInputTokens > 0 && (
           <p>
             {i18next.t(
               '普通输入：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * {{ratioType}} {{ratio}} = {{amount}}',
               {
-                tokens: textInputTokens,
+                tokens: normalizedTextInputTokens,
                 modelRatio: modelRatioValue,
                 ratioType: ratioLabel,
                 ratio: groupRatio,
@@ -1795,12 +1922,12 @@ export function renderModelPrice(
             )}
           </p>
         )}
-        {cacheInputTokens > 0 && (
+        {normalizedCacheTokens > 0 && (
           <p>
             {i18next.t(
               '缓存输入：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * 缓存倍率 {{cacheRatio}} * {{ratioType}} {{ratio}} = {{amount}}',
               {
-                tokens: cacheInputTokens,
+                tokens: normalizedCacheTokens,
                 modelRatio: modelRatioValue,
                 cacheRatio: cacheRatioValue,
                 ratioType: ratioLabel,
@@ -1810,12 +1937,12 @@ export function renderModelPrice(
             )}
           </p>
         )}
-        {imageInputTokens > 0 && (
+        {normalizedImageInputTokens > 0 && (
           <p>
             {i18next.t(
               '图片输入：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * 图片倍率 {{imageRatio}} * {{ratioType}} {{ratio}} = {{amount}}',
               {
-                tokens: imageInputTokens,
+                tokens: normalizedImageInputTokens,
                 modelRatio: modelRatioValue,
                 imageRatio: imageRatioValue,
                 ratioType: ratioLabel,
@@ -1825,12 +1952,12 @@ export function renderModelPrice(
             )}
           </p>
         )}
-        {audioInputTokens > 0 && audioRatioValue !== null && (
+        {normalizedAudioInputTokens > 0 && audioRatioValue !== null && (
           <p>
             {i18next.t(
               '音频输入：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * 音频倍率 {{audioRatio}} * {{ratioType}} {{ratio}} = {{amount}}',
               {
-                tokens: audioInputTokens,
+                tokens: normalizedAudioInputTokens,
                 modelRatio: modelRatioValue,
                 audioRatio: audioRatioValue,
                 ratioType: ratioLabel,
@@ -1844,7 +1971,7 @@ export function renderModelPrice(
           {i18next.t(
             '输出：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * 补全倍率 {{completionRatio}} * {{ratioType}} {{ratio}} = {{amount}}',
             {
-              tokens: completionTokens,
+              tokens: normalizedCompletionBaseTokens,
               modelRatio: modelRatioValue,
               completionRatio: completionRatioValue,
               ratioType: ratioLabel,
@@ -1853,6 +1980,21 @@ export function renderModelPrice(
             },
           )}
         </p>
+        {normalizedImageOutputTokens > 0 && (
+          <p>
+            {i18next.t(
+              '图片输出：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * 图片输出倍率 {{imageOutputRatio}} * {{ratioType}} {{ratio}} = {{amount}}',
+              {
+                tokens: normalizedImageOutputTokens,
+                modelRatio: modelRatioValue,
+                imageOutputRatio: imageOutputRatioValue,
+                ratioType: ratioLabel,
+                ratio: groupRatio,
+                amount: renderDisplayAmountFromUsd(imageOutputAmount),
+              },
+            )}
+          </p>
+        )}
         {webSearch && webSearchCallCount > 0 && (
           <p>
             {i18next.t(

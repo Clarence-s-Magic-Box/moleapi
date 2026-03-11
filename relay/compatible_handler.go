@@ -241,10 +241,14 @@ func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage 
 	useTimeSeconds := time.Now().Unix() - relayInfo.StartTime.Unix()
 	promptTokens := usage.PromptTokens
 	cacheTokens := usage.PromptTokensDetails.CachedTokens
+	promptTextTokens := usage.PromptTokensDetails.TextTokens
 	imageTokens := usage.PromptTokensDetails.ImageTokens
 	imageOutputTokens := usage.CompletionTokenDetails.ImageTokens
 	audioTokens := usage.PromptTokensDetails.AudioTokens
 	completionTokens := usage.CompletionTokens
+	completionTextTokens := usage.CompletionTokenDetails.TextTokens
+	completionAudioTokens := usage.CompletionTokenDetails.AudioTokens
+	reasoningTokens := usage.CompletionTokenDetails.ReasoningTokens
 	cachedCreationTokens := usage.PromptTokensDetails.CachedCreationTokens
 
 	modelName := relayInfo.OriginModelName
@@ -262,10 +266,14 @@ func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage 
 	// Convert values to decimal for precise calculation
 	dPromptTokens := decimal.NewFromInt(int64(promptTokens))
 	dCacheTokens := decimal.NewFromInt(int64(cacheTokens))
+	dPromptTextTokens := decimal.NewFromInt(int64(promptTextTokens))
 	dImageTokens := decimal.NewFromInt(int64(imageTokens))
 	dImageOutputTokens := decimal.NewFromInt(int64(imageOutputTokens))
 	dAudioTokens := decimal.NewFromInt(int64(audioTokens))
 	dCompletionTokens := decimal.NewFromInt(int64(completionTokens))
+	dCompletionTextTokens := decimal.NewFromInt(int64(completionTextTokens))
+	dCompletionAudioTokens := decimal.NewFromInt(int64(completionAudioTokens))
+	dReasoningTokens := decimal.NewFromInt(int64(reasoningTokens))
 	dCachedCreationTokens := decimal.NewFromInt(int64(cachedCreationTokens))
 	dCompletionRatio := decimal.NewFromFloat(completionRatio)
 	dCacheRatio := decimal.NewFromFloat(cacheRatio)
@@ -345,6 +353,8 @@ func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage 
 	var audioInputQuota decimal.Decimal
 	var audioInputPrice float64
 	isClaudeUsageSemantic := relayInfo.GetFinalRequestRelayFormat() == types.RelayFormatClaude
+	promptModalitiesSplit := detailTokensExceedTotal(dPromptTokens, dPromptTextTokens, dImageTokens, dAudioTokens)
+	completionModalitiesSplit := detailTokensExceedTotal(dCompletionTokens, dCompletionTextTokens, dCompletionAudioTokens, dReasoningTokens, dImageOutputTokens)
 	if !relayInfo.PriceData.UsePrice {
 		baseTokens := dPromptTokens
 		// 减去 cached tokens
@@ -368,7 +378,9 @@ func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage 
 		// 减去 image tokens
 		var imageTokensWithRatio decimal.Decimal
 		if !dImageTokens.IsZero() {
-			baseTokens = baseTokens.Sub(dImageTokens)
+			if !promptModalitiesSplit {
+				baseTokens = baseTokens.Sub(dImageTokens)
+			}
 			imageTokensWithRatio = dImageTokens.Mul(dImageRatio)
 		}
 
@@ -377,10 +389,15 @@ func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage 
 			audioInputPrice = operation_setting.GetGeminiInputAudioPricePerMillionTokens(modelName)
 			if audioInputPrice > 0 {
 				// 重新计算 base tokens
-				baseTokens = baseTokens.Sub(dAudioTokens)
+				if !promptModalitiesSplit {
+					baseTokens = baseTokens.Sub(dAudioTokens)
+				}
 				audioInputQuota = decimal.NewFromFloat(audioInputPrice).Div(decimal.NewFromInt(1000000)).Mul(dAudioTokens).Mul(dGroupRatio).Mul(dQuotaPerUnit)
 				extraContent = append(extraContent, fmt.Sprintf("Audio Input 花费 %s", audioInputQuota.String()))
 			}
+		}
+		if baseTokens.IsNegative() {
+			baseTokens = decimal.Zero
 		}
 		promptQuota := baseTokens.Add(cachedTokensWithRatio).
 			Add(imageTokensWithRatio).
@@ -389,7 +406,9 @@ func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage 
 		completionBaseTokens := dCompletionTokens
 		var imageOutputTokensWithRatio decimal.Decimal
 		if !dImageOutputTokens.IsZero() {
-			completionBaseTokens = completionBaseTokens.Sub(dImageOutputTokens)
+			if !completionModalitiesSplit {
+				completionBaseTokens = completionBaseTokens.Sub(dImageOutputTokens)
+			}
 			imageOutputTokensWithRatio = dImageOutputTokens.Mul(dImageOutputRatio)
 			if completionBaseTokens.IsNegative() {
 				completionBaseTokens = decimal.Zero
@@ -471,10 +490,25 @@ func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage 
 		other["image_ratio"] = imageRatio
 		other["image_input"] = imageTokens
 	}
+	if promptTextTokens != 0 {
+		other["text_input"] = promptTextTokens
+	}
 	if imageOutputTokens != 0 {
 		other["image"] = true
 		other["image_output_ratio"] = imageOutputRatio
 		other["image_output"] = imageOutputTokens
+	}
+	if completionTextTokens != 0 {
+		other["text_output"] = completionTextTokens
+	}
+	if reasoningTokens != 0 {
+		other["reasoning_output"] = reasoningTokens
+	}
+	if promptModalitiesSplit {
+		other["input_modality_split"] = true
+	}
+	if completionModalitiesSplit {
+		other["output_modality_split"] = true
 	}
 	if cachedCreationTokens != 0 {
 		other["cache_creation_tokens"] = cachedCreationTokens
@@ -527,4 +561,14 @@ func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage 
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
 	})
+}
+
+func detailTokensExceedTotal(total decimal.Decimal, detailTokens ...decimal.Decimal) bool {
+	detailTotal := decimal.Zero
+	for _, tokenCount := range detailTokens {
+		if tokenCount.GreaterThan(decimal.Zero) {
+			detailTotal = detailTotal.Add(tokenCount)
+		}
+	}
+	return detailTotal.GreaterThan(total)
 }
