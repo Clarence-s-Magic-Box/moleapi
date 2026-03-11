@@ -442,6 +442,7 @@ export const getTokensColumns = ({
   loadingTokenKeys,
   toggleTokenVisibility,
   copyTokenKey,
+  copyText,
   manageToken,
   onOpenLink,
   setEditingToken,
