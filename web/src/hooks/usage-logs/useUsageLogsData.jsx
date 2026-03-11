@@ -533,7 +533,9 @@ export const useLogsData = () => {
               other?.cache_ratio || 1.0,
               other?.image || false,
               other?.image_ratio || 0,
+              other?.image_input || 0,
               other?.image_output || 0,
+              other?.image_output_ratio || 0,
               other?.web_search || false,
               other?.web_search_call_count || 0,
               other?.web_search_price || 0,
@@ -545,6 +547,11 @@ export const useLogsData = () => {
               other?.audio_input_price || 0,
               other?.image_generation_call || false,
               other?.image_generation_call_price || 0,
+              other?.text_input || 0,
+              other?.text_output || 0,
+              other?.reasoning_output || 0,
+              other?.input_modality_split || false,
+              other?.output_modality_split || false,
               billingDisplayMode,
             );
           }
