@@ -3,6 +3,8 @@ package common
 import "strings"
 
 var (
+	SystemModelRedirectPrefix = "mole-"
+
 	// OpenAIResponseOnlyModels is a list of models that are only available for OpenAI responses.
 	OpenAIResponseOnlyModels = []string{
 		"o3-pro",
@@ -56,4 +58,17 @@ func IsOpenAITextModel(modelName string) bool {
 		}
 	}
 	return false
+}
+
+// GetSystemRedirectedModelName applies system-level model alias redirection.
+// When model starts with "mole-", it is redirected to the suffix model name.
+func GetSystemRedirectedModelName(modelName string) (string, bool) {
+	if !strings.HasPrefix(modelName, SystemModelRedirectPrefix) {
+		return modelName, false
+	}
+	trimmedModel := strings.TrimPrefix(modelName, SystemModelRedirectPrefix)
+	if trimmedModel == "" {
+		return modelName, false
+	}
+	return trimmedModel, true
 }
