@@ -9,6 +9,10 @@
       "destination": "https://api.moleapi.com/api/$1"
     },
     {
+      "source": "/user/(.*)",
+      "destination": "https://api.moleapi.com/user/$1"
+    },
+    {
       "source": "/v1/(.*)",
       "destination": "https://api.moleapi.com/v1/$1"
     },
