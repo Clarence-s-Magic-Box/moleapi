@@ -63,3 +63,18 @@ func TestModelMappedHelper_SystemRedirect_NonMolePrefixNotRedirected(t *testing.
 	require.Equal(t, "", info.UpstreamModelName)
 	require.Equal(t, "moleapi-gpt-4o", request.Model)
 }
+
+func TestModelMappedHelper_SystemRedirect_GptAlias(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c := newModelMappedContext("")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt5.4",
+	}
+	request := &dto.GeneralOpenAIRequest{Model: "gpt5.4"}
+
+	err := ModelMappedHelper(c, info, request)
+	require.NoError(t, err)
+	require.True(t, info.IsModelMapped)
+	require.Equal(t, "gpt-5.4", info.UpstreamModelName)
+	require.Equal(t, "gpt-5.4", request.Model)
+}

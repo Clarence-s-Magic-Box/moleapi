@@ -63,12 +63,21 @@ func IsOpenAITextModel(modelName string) bool {
 // GetSystemRedirectedModelName applies system-level model alias redirection.
 // When model starts with "mole-", it is redirected to the suffix model name.
 func GetSystemRedirectedModelName(modelName string) (string, bool) {
-	if !strings.HasPrefix(modelName, SystemModelRedirectPrefix) {
+	if strings.HasPrefix(modelName, SystemModelRedirectPrefix) {
+		trimmedModel := strings.TrimPrefix(modelName, SystemModelRedirectPrefix)
+		if trimmedModel == "" {
+			return modelName, false
+		}
+		return trimmedModel, true
+	}
+
+	lowerModel := strings.ToLower(modelName)
+	if !strings.HasPrefix(lowerModel, "gpt") || strings.HasPrefix(lowerModel, "gpt-") {
 		return modelName, false
 	}
-	trimmedModel := strings.TrimPrefix(modelName, SystemModelRedirectPrefix)
+	trimmedModel := modelName[3:]
 	if trimmedModel == "" {
 		return modelName, false
 	}
-	return trimmedModel, true
+	return "gpt-" + trimmedModel, true
 }

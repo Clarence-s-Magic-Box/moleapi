@@ -64,3 +64,13 @@ func TestGetModelRequest_SystemRedirect_NonMolePrefixNotRedirected(t *testing.T)
 	require.True(t, shouldSelectChannel)
 	require.Equal(t, "moleapi-gpt-4o", req.Model)
 }
+
+func TestGetModelRequest_SystemRedirect_GptAlias(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c := newDistributorTestContext("/v1/chat/completions", `{"model":"gpt5.4"}`)
+
+	req, shouldSelectChannel, err := getModelRequest(c)
+	require.NoError(t, err)
+	require.True(t, shouldSelectChannel)
+	require.Equal(t, "gpt-5.4", req.Model)
+}
