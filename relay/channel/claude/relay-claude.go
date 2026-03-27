@@ -553,6 +553,76 @@ type ClaudeResponseInfo struct {
 	ResponseText strings.Builder
 	Usage        *dto.Usage
 	Done         bool
+	HasOutput    bool
+}
+
+func hasClaudeResponseOutput(claudeResponse *dto.ClaudeResponse) bool {
+	if claudeResponse == nil {
+		return false
+	}
+	if len(claudeResponse.Content) > 0 {
+		return true
+	}
+	if strings.TrimSpace(claudeResponse.Completion) != "" {
+		return true
+	}
+	if claudeResponse.ContentBlock != nil {
+		return true
+	}
+	if claudeResponse.Delta == nil {
+		return false
+	}
+	if claudeResponse.Delta.Text != nil && strings.TrimSpace(*claudeResponse.Delta.Text) != "" {
+		return true
+	}
+	if claudeResponse.Delta.Thinking != nil && strings.TrimSpace(*claudeResponse.Delta.Thinking) != "" {
+		return true
+	}
+	if claudeResponse.Delta.PartialJson != nil && strings.TrimSpace(*claudeResponse.Delta.PartialJson) != "" {
+		return true
+	}
+	return claudeResponse.Delta.Type != "" ||
+		claudeResponse.Delta.Name != "" ||
+		claudeResponse.Delta.Id != "" ||
+		claudeResponse.Delta.ToolUseId != "" ||
+		claudeResponse.Delta.Content != nil
+}
+
+func shouldWaiveClaudeEmptyResponse(claudeInfo *ClaudeResponseInfo) bool {
+	return claudeInfo != nil &&
+		claudeInfo.Usage != nil &&
+		!claudeInfo.HasOutput &&
+		claudeInfo.Usage.CompletionTokens == 0 &&
+		claudeInfo.Usage.PromptTokens > 0
+}
+
+func cacheCreationTokensForOpenAIUsage(usage *dto.Usage) int {
+	if usage == nil {
+		return 0
+	}
+	splitCacheCreationTokens := usage.ClaudeCacheCreation5mTokens + usage.ClaudeCacheCreation1hTokens
+	if splitCacheCreationTokens == 0 {
+		return usage.PromptTokensDetails.CachedCreationTokens
+	}
+	if usage.PromptTokensDetails.CachedCreationTokens > splitCacheCreationTokens {
+		return usage.PromptTokensDetails.CachedCreationTokens
+	}
+	return splitCacheCreationTokens
+}
+
+func buildOpenAIStyleUsageFromClaudeUsage(usage *dto.Usage) dto.Usage {
+	if usage == nil {
+		return dto.Usage{}
+	}
+	clone := *usage
+	cacheCreationTokens := cacheCreationTokensForOpenAIUsage(usage)
+	totalInputTokens := usage.PromptTokens + usage.PromptTokensDetails.CachedTokens + cacheCreationTokens
+	clone.PromptTokens = totalInputTokens
+	clone.InputTokens = totalInputTokens
+	clone.TotalTokens = totalInputTokens + usage.CompletionTokens
+	clone.UsageSemantic = "openai"
+	clone.UsageSource = "anthropic"
+	return clone
 }
 
 func buildMessageDeltaPatchUsage(claudeResponse *dto.ClaudeResponse, claudeInfo *ClaudeResponseInfo) *dto.ClaudeUsage {
@@ -634,6 +704,9 @@ func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *d
 	if claudeInfo.Usage == nil {
 		claudeInfo.Usage = &dto.Usage{}
 	}
+	if hasClaudeResponseOutput(claudeResponse) {
+		claudeInfo.HasOutput = true
+	}
 	if claudeResponse.Type == "message_start" {
 		if claudeResponse.Message != nil {
 			claudeInfo.ResponseId = claudeResponse.Message.Id
@@ -643,6 +716,7 @@ func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *d
 		// message_start, 获取usage
 		if claudeResponse.Message != nil && claudeResponse.Message.Usage != nil {
 			claudeInfo.Usage.PromptTokens = claudeResponse.Message.Usage.InputTokens
+			claudeInfo.Usage.UsageSemantic = "anthropic"
 			claudeInfo.Usage.PromptTokensDetails.CachedTokens = claudeResponse.Message.Usage.CacheReadInputTokens
 			claudeInfo.Usage.PromptTokensDetails.CachedCreationTokens = claudeResponse.Message.Usage.CacheCreationInputTokens
 			claudeInfo.Usage.ClaudeCacheCreation5mTokens = claudeResponse.Message.Usage.GetCacheCreation5mTokens()
@@ -661,6 +735,7 @@ func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *d
 	} else if claudeResponse.Type == "message_delta" {
 		// 最终的usage获取
 		if claudeResponse.Usage != nil {
+			claudeInfo.Usage.UsageSemantic = "anthropic"
 			if claudeResponse.Usage.InputTokens > 0 {
 				// 不叠加，只取最新的
 				claudeInfo.Usage.PromptTokens = claudeResponse.Usage.InputTokens
@@ -748,18 +823,28 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 	if claudeInfo.Usage.PromptTokens == 0 {
 		//上游出错
 	}
-	if claudeInfo.Usage.CompletionTokens == 0 || !claudeInfo.Done {
+	waiveEmptyResponse := shouldWaiveClaudeEmptyResponse(claudeInfo)
+	if waiveEmptyResponse {
+		logger.LogWarn(c, fmt.Sprintf("claude returned empty response with zero completion tokens, waive billing, userId %d, channelId %d, tokenId %d, model %s",
+			info.UserId, info.ChannelId, info.TokenId, info.OriginModelName))
+		claudeInfo.Usage = &dto.Usage{}
+	}
+	if !waiveEmptyResponse && (claudeInfo.Usage.CompletionTokens == 0 || !claudeInfo.Done) {
 		if common.DebugEnabled {
 			common.SysLog("claude response usage is not complete, maybe upstream error")
 		}
 		claudeInfo.Usage = service.ResponseText2Usage(c, claudeInfo.ResponseText.String(), info.UpstreamModelName, claudeInfo.Usage.PromptTokens)
+	}
+	if claudeInfo.Usage != nil {
+		claudeInfo.Usage.UsageSemantic = "anthropic"
 	}
 
 	if info.RelayFormat == types.RelayFormatClaude {
 		//
 	} else if info.RelayFormat == types.RelayFormatOpenAI {
 		if info.ShouldIncludeUsage {
-			response := helper.GenerateFinalUsageResponse(claudeInfo.ResponseId, claudeInfo.Created, info.UpstreamModelName, *claudeInfo.Usage)
+			openAIUsage := buildOpenAIStyleUsageFromClaudeUsage(claudeInfo.Usage)
+			response := helper.GenerateFinalUsageResponse(claudeInfo.ResponseId, claudeInfo.Created, info.UpstreamModelName, openAIUsage)
 			err := helper.ObjectData(c, response)
 			if err != nil {
 				common.SysLog("send final response failed: " + err.Error())
@@ -810,16 +895,23 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		claudeInfo.Usage.PromptTokens = claudeResponse.Usage.InputTokens
 		claudeInfo.Usage.CompletionTokens = claudeResponse.Usage.OutputTokens
 		claudeInfo.Usage.TotalTokens = claudeResponse.Usage.InputTokens + claudeResponse.Usage.OutputTokens
+		claudeInfo.Usage.UsageSemantic = "anthropic"
 		claudeInfo.Usage.PromptTokensDetails.CachedTokens = claudeResponse.Usage.CacheReadInputTokens
 		claudeInfo.Usage.PromptTokensDetails.CachedCreationTokens = claudeResponse.Usage.CacheCreationInputTokens
 		claudeInfo.Usage.ClaudeCacheCreation5mTokens = claudeResponse.Usage.GetCacheCreation5mTokens()
 		claudeInfo.Usage.ClaudeCacheCreation1hTokens = claudeResponse.Usage.GetCacheCreation1hTokens()
 	}
+	claudeInfo.HasOutput = hasClaudeResponseOutput(&claudeResponse)
+	if shouldWaiveClaudeEmptyResponse(claudeInfo) {
+		logger.LogWarn(c, fmt.Sprintf("claude returned empty non-stream response with zero completion tokens, waive billing, userId %d, channelId %d, tokenId %d, model %s",
+			info.UserId, info.ChannelId, info.TokenId, info.OriginModelName))
+		claudeInfo.Usage = &dto.Usage{}
+	}
 	var responseData []byte
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:
 		openaiResponse := ResponseClaude2OpenAI(&claudeResponse)
-		openaiResponse.Usage = *claudeInfo.Usage
+		openaiResponse.Usage = buildOpenAIStyleUsageFromClaudeUsage(claudeInfo.Usage)
 		responseData, err = json.Marshal(openaiResponse)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeBadResponseBody)

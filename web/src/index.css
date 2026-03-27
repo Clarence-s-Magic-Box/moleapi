@@ -1097,3 +1097,26 @@ html.dark .with-pastel-balls::before {
 .dark .nav-link-item-mobile:hover {
   background-color: rgba(var(--semi-blue-5), 0.2) !important;
 }
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Channel advanced settings side panel animations */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}

@@ -1,10 +1,16 @@
 package claude
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/dto"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
 )
 
 func TestFormatClaudeResponseInfo_MessageStart(t *testing.T) {
@@ -171,5 +177,198 @@ func TestFormatClaudeResponseInfo_ContentBlockDelta(t *testing.T) {
 	}
 	if claudeInfo.ResponseText.String() != "hello" {
 		t.Errorf("ResponseText = %q, want %q", claudeInfo.ResponseText.String(), "hello")
+	}
+}
+
+func TestBuildOpenAIStyleUsageFromClaudeUsage(t *testing.T) {
+	usage := &dto.Usage{
+		PromptTokens:     100,
+		CompletionTokens: 20,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:         30,
+			CachedCreationTokens: 50,
+		},
+		ClaudeCacheCreation5mTokens: 10,
+		ClaudeCacheCreation1hTokens: 20,
+		UsageSemantic:               "anthropic",
+	}
+
+	openAIUsage := buildOpenAIStyleUsageFromClaudeUsage(usage)
+
+	if openAIUsage.PromptTokens != 180 {
+		t.Fatalf("PromptTokens = %d, want 180", openAIUsage.PromptTokens)
+	}
+	if openAIUsage.InputTokens != 180 {
+		t.Fatalf("InputTokens = %d, want 180", openAIUsage.InputTokens)
+	}
+	if openAIUsage.TotalTokens != 200 {
+		t.Fatalf("TotalTokens = %d, want 200", openAIUsage.TotalTokens)
+	}
+	if openAIUsage.UsageSemantic != "openai" {
+		t.Fatalf("UsageSemantic = %s, want openai", openAIUsage.UsageSemantic)
+	}
+	if openAIUsage.UsageSource != "anthropic" {
+		t.Fatalf("UsageSource = %s, want anthropic", openAIUsage.UsageSource)
+	}
+}
+
+func TestBuildOpenAIStyleUsageFromClaudeUsagePreservesCacheCreationRemainder(t *testing.T) {
+	tests := []struct {
+		name                    string
+		cachedCreationTokens    int
+		cacheCreationTokens5m   int
+		cacheCreationTokens1h   int
+		expectedTotalInputToken int
+	}{
+		{
+			name:                    "prefers aggregate when it includes remainder",
+			cachedCreationTokens:    50,
+			cacheCreationTokens5m:   10,
+			cacheCreationTokens1h:   20,
+			expectedTotalInputToken: 180,
+		},
+		{
+			name:                    "falls back to split tokens when aggregate missing",
+			cachedCreationTokens:    0,
+			cacheCreationTokens5m:   10,
+			cacheCreationTokens1h:   20,
+			expectedTotalInputToken: 160,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			usage := &dto.Usage{
+				PromptTokens:     100,
+				CompletionTokens: 20,
+				PromptTokensDetails: dto.InputTokenDetails{
+					CachedTokens:         30,
+					CachedCreationTokens: tt.cachedCreationTokens,
+				},
+				ClaudeCacheCreation5mTokens: tt.cacheCreationTokens5m,
+				ClaudeCacheCreation1hTokens: tt.cacheCreationTokens1h,
+				UsageSemantic:               "anthropic",
+			}
+
+			openAIUsage := buildOpenAIStyleUsageFromClaudeUsage(usage)
+
+			if openAIUsage.PromptTokens != tt.expectedTotalInputToken {
+				t.Fatalf("PromptTokens = %d, want %d", openAIUsage.PromptTokens, tt.expectedTotalInputToken)
+			}
+			if openAIUsage.InputTokens != tt.expectedTotalInputToken {
+				t.Fatalf("InputTokens = %d, want %d", openAIUsage.InputTokens, tt.expectedTotalInputToken)
+			}
+		})
+	}
+}
+
+func TestHasClaudeResponseOutput(t *testing.T) {
+	t.Run("empty response", func(t *testing.T) {
+		if hasClaudeResponseOutput(&dto.ClaudeResponse{}) {
+			t.Fatal("expected empty response to have no output")
+		}
+	})
+
+	t.Run("tool block counts as output", func(t *testing.T) {
+		resp := &dto.ClaudeResponse{
+			ContentBlock: &dto.ClaudeMediaMessage{
+				Type: "tool_use",
+				Name: "search",
+			},
+		}
+		if !hasClaudeResponseOutput(resp) {
+			t.Fatal("expected tool block to count as output")
+		}
+	})
+
+	t.Run("partial json delta counts as output", func(t *testing.T) {
+		partial := "{\"city\":\"Shanghai\"}"
+		resp := &dto.ClaudeResponse{
+			Delta: &dto.ClaudeMediaMessage{
+				PartialJson: &partial,
+			},
+		}
+		if !hasClaudeResponseOutput(resp) {
+			t.Fatal("expected partial json to count as output")
+		}
+	})
+}
+
+func TestShouldWaiveClaudeEmptyResponse(t *testing.T) {
+	info := &ClaudeResponseInfo{
+		Usage: &dto.Usage{
+			PromptTokens:     35388,
+			CompletionTokens: 0,
+		},
+	}
+	if !shouldWaiveClaudeEmptyResponse(info) {
+		t.Fatal("expected empty response to be waived")
+	}
+
+	info.HasOutput = true
+	if shouldWaiveClaudeEmptyResponse(info) {
+		t.Fatal("expected response with output not to be waived")
+	}
+}
+
+func TestHandleStreamFinalResponse_WaivesEmptyResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "claude-3-5-sonnet-20241022",
+		UserId:          1,
+		TokenId:         2,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:         170,
+			UpstreamModelName: "claude-3-5-sonnet-20241022",
+		},
+	}
+	claudeInfo := &ClaudeResponseInfo{
+		Usage: &dto.Usage{
+			PromptTokens:     35388,
+			CompletionTokens: 0,
+			TotalTokens:      35388,
+		},
+	}
+
+	HandleStreamFinalResponse(ctx, info, claudeInfo)
+
+	if claudeInfo.Usage.PromptTokens != 0 || claudeInfo.Usage.CompletionTokens != 0 || claudeInfo.Usage.TotalTokens != 0 {
+		t.Fatalf("expected usage to be waived, got %+v", *claudeInfo.Usage)
+	}
+}
+
+func TestHandleClaudeResponseData_WaivesEmptyNonStreamResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	info := &relaycommon.RelayInfo{
+		RelayFormat:     types.RelayFormatClaude,
+		OriginModelName: "claude-3-5-sonnet-20241022",
+		UserId:          1,
+		TokenId:         2,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:         170,
+			UpstreamModelName: "claude-3-5-sonnet-20241022",
+		},
+	}
+	claudeInfo := &ClaudeResponseInfo{
+		Usage: &dto.Usage{},
+	}
+
+	body := []byte(`{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":"end_turn","model":"claude-3-5-sonnet-20241022","usage":{"input_tokens":35388,"output_tokens":0}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader("")),
+	}
+
+	if err := HandleClaudeResponseData(ctx, info, claudeInfo, resp, body); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if claudeInfo.Usage.PromptTokens != 0 || claudeInfo.Usage.CompletionTokens != 0 || claudeInfo.Usage.TotalTokens != 0 {
+		t.Fatalf("expected usage to be waived, got %+v", *claudeInfo.Usage)
 	}
 }
