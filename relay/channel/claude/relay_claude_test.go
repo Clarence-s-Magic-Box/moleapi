@@ -1,10 +1,16 @@
 package claude
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/dto"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
 )
 
 func TestFormatClaudeResponseInfo_MessageStart(t *testing.T) {
@@ -174,6 +180,7 @@ func TestFormatClaudeResponseInfo_ContentBlockDelta(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
 func TestBuildOpenAIStyleUsageFromClaudeUsage(t *testing.T) {
 	usage := &dto.Usage{
 		PromptTokens:     100,
@@ -253,5 +260,116 @@ func TestBuildOpenAIStyleUsageFromClaudeUsagePreservesCacheCreationRemainder(t *
 				t.Fatalf("InputTokens = %d, want %d", openAIUsage.InputTokens, tt.expectedTotalInputToken)
 			}
 		})
+	}
+}
+
+func TestHasClaudeResponseOutput(t *testing.T) {
+	t.Run("empty response", func(t *testing.T) {
+		if hasClaudeResponseOutput(&dto.ClaudeResponse{}) {
+			t.Fatal("expected empty response to have no output")
+		}
+	})
+
+	t.Run("tool block counts as output", func(t *testing.T) {
+		resp := &dto.ClaudeResponse{
+			ContentBlock: &dto.ClaudeMediaMessage{
+				Type: "tool_use",
+				Name: "search",
+			},
+		}
+		if !hasClaudeResponseOutput(resp) {
+			t.Fatal("expected tool block to count as output")
+		}
+	})
+
+	t.Run("partial json delta counts as output", func(t *testing.T) {
+		partial := "{\"city\":\"Shanghai\"}"
+		resp := &dto.ClaudeResponse{
+			Delta: &dto.ClaudeMediaMessage{
+				PartialJson: &partial,
+			},
+		}
+		if !hasClaudeResponseOutput(resp) {
+			t.Fatal("expected partial json to count as output")
+		}
+	})
+}
+
+func TestShouldWaiveClaudeEmptyResponse(t *testing.T) {
+	info := &ClaudeResponseInfo{
+		Usage: &dto.Usage{
+			PromptTokens:     35388,
+			CompletionTokens: 0,
+		},
+	}
+	if !shouldWaiveClaudeEmptyResponse(info) {
+		t.Fatal("expected empty response to be waived")
+	}
+
+	info.HasOutput = true
+	if shouldWaiveClaudeEmptyResponse(info) {
+		t.Fatal("expected response with output not to be waived")
+	}
+}
+
+func TestHandleStreamFinalResponse_WaivesEmptyResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "claude-3-5-sonnet-20241022",
+		UserId:          1,
+		TokenId:         2,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:         170,
+			UpstreamModelName: "claude-3-5-sonnet-20241022",
+		},
+	}
+	claudeInfo := &ClaudeResponseInfo{
+		Usage: &dto.Usage{
+			PromptTokens:     35388,
+			CompletionTokens: 0,
+			TotalTokens:      35388,
+		},
+	}
+
+	HandleStreamFinalResponse(ctx, info, claudeInfo)
+
+	if claudeInfo.Usage.PromptTokens != 0 || claudeInfo.Usage.CompletionTokens != 0 || claudeInfo.Usage.TotalTokens != 0 {
+		t.Fatalf("expected usage to be waived, got %+v", *claudeInfo.Usage)
+	}
+}
+
+func TestHandleClaudeResponseData_WaivesEmptyNonStreamResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	info := &relaycommon.RelayInfo{
+		RelayFormat:     types.RelayFormatClaude,
+		OriginModelName: "claude-3-5-sonnet-20241022",
+		UserId:          1,
+		TokenId:         2,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:         170,
+			UpstreamModelName: "claude-3-5-sonnet-20241022",
+		},
+	}
+	claudeInfo := &ClaudeResponseInfo{
+		Usage: &dto.Usage{},
+	}
+
+	body := []byte(`{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":"end_turn","model":"claude-3-5-sonnet-20241022","usage":{"input_tokens":35388,"output_tokens":0}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader("")),
+	}
+
+	if err := HandleClaudeResponseData(ctx, info, claudeInfo, resp, body); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if claudeInfo.Usage.PromptTokens != 0 || claudeInfo.Usage.CompletionTokens != 0 || claudeInfo.Usage.TotalTokens != 0 {
+		t.Fatalf("expected usage to be waived, got %+v", *claudeInfo.Usage)
 	}
 }

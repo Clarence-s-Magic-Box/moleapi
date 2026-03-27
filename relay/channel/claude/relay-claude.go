@@ -553,6 +553,47 @@ type ClaudeResponseInfo struct {
 	ResponseText strings.Builder
 	Usage        *dto.Usage
 	Done         bool
+	HasOutput    bool
+}
+
+func hasClaudeResponseOutput(claudeResponse *dto.ClaudeResponse) bool {
+	if claudeResponse == nil {
+		return false
+	}
+	if len(claudeResponse.Content) > 0 {
+		return true
+	}
+	if strings.TrimSpace(claudeResponse.Completion) != "" {
+		return true
+	}
+	if claudeResponse.ContentBlock != nil {
+		return true
+	}
+	if claudeResponse.Delta == nil {
+		return false
+	}
+	if claudeResponse.Delta.Text != nil && strings.TrimSpace(*claudeResponse.Delta.Text) != "" {
+		return true
+	}
+	if claudeResponse.Delta.Thinking != nil && strings.TrimSpace(*claudeResponse.Delta.Thinking) != "" {
+		return true
+	}
+	if claudeResponse.Delta.PartialJson != nil && strings.TrimSpace(*claudeResponse.Delta.PartialJson) != "" {
+		return true
+	}
+	return claudeResponse.Delta.Type != "" ||
+		claudeResponse.Delta.Name != "" ||
+		claudeResponse.Delta.Id != "" ||
+		claudeResponse.Delta.ToolUseId != "" ||
+		claudeResponse.Delta.Content != nil
+}
+
+func shouldWaiveClaudeEmptyResponse(claudeInfo *ClaudeResponseInfo) bool {
+	return claudeInfo != nil &&
+		claudeInfo.Usage != nil &&
+		!claudeInfo.HasOutput &&
+		claudeInfo.Usage.CompletionTokens == 0 &&
+		claudeInfo.Usage.PromptTokens > 0
 }
 
 func cacheCreationTokensForOpenAIUsage(usage *dto.Usage) int {
@@ -662,6 +703,9 @@ func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *d
 	}
 	if claudeInfo.Usage == nil {
 		claudeInfo.Usage = &dto.Usage{}
+	}
+	if hasClaudeResponseOutput(claudeResponse) {
+		claudeInfo.HasOutput = true
 	}
 	if claudeResponse.Type == "message_start" {
 		if claudeResponse.Message != nil {
@@ -779,7 +823,13 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 	if claudeInfo.Usage.PromptTokens == 0 {
 		//上游出错
 	}
-	if claudeInfo.Usage.CompletionTokens == 0 || !claudeInfo.Done {
+	waiveEmptyResponse := shouldWaiveClaudeEmptyResponse(claudeInfo)
+	if waiveEmptyResponse {
+		logger.LogWarn(c, fmt.Sprintf("claude returned empty response with zero completion tokens, waive billing, userId %d, channelId %d, tokenId %d, model %s",
+			info.UserId, info.ChannelId, info.TokenId, info.OriginModelName))
+		claudeInfo.Usage = &dto.Usage{}
+	}
+	if !waiveEmptyResponse && (claudeInfo.Usage.CompletionTokens == 0 || !claudeInfo.Done) {
 		if common.DebugEnabled {
 			common.SysLog("claude response usage is not complete, maybe upstream error")
 		}
@@ -850,6 +900,12 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		claudeInfo.Usage.PromptTokensDetails.CachedCreationTokens = claudeResponse.Usage.CacheCreationInputTokens
 		claudeInfo.Usage.ClaudeCacheCreation5mTokens = claudeResponse.Usage.GetCacheCreation5mTokens()
 		claudeInfo.Usage.ClaudeCacheCreation1hTokens = claudeResponse.Usage.GetCacheCreation1hTokens()
+	}
+	claudeInfo.HasOutput = hasClaudeResponseOutput(&claudeResponse)
+	if shouldWaiveClaudeEmptyResponse(claudeInfo) {
+		logger.LogWarn(c, fmt.Sprintf("claude returned empty non-stream response with zero completion tokens, waive billing, userId %d, channelId %d, tokenId %d, model %s",
+			info.UserId, info.ChannelId, info.TokenId, info.OriginModelName))
+		claudeInfo.Usage = &dto.Usage{}
 	}
 	var responseData []byte
 	switch info.RelayFormat {
