@@ -180,7 +180,6 @@ func TestFormatClaudeResponseInfo_ContentBlockDelta(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
 func TestBuildOpenAIStyleUsageFromClaudeUsage(t *testing.T) {
 	usage := &dto.Usage{
 		PromptTokens:     100,
