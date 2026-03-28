@@ -316,3 +316,38 @@ func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T
 	require.Equal(t, 172, summary.PromptTokens)
 	require.Equal(t, 798, summary.Quota)
 }
+
+func TestCalculateTextQuotaSummaryBillsImageOutputTokensWithDedicatedRatio(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3.1-flash-image-preview",
+		PriceData: types.PriceData{
+			ModelRatio:       0.25,
+			CompletionRatio:  6,
+			ImageOutputRatio: 60,
+			GroupRatioInfo:   types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     100,
+		CompletionTokens: 30,
+		PromptTokensDetails: dto.InputTokenDetails{
+			TextTokens: 100,
+		},
+		CompletionTokenDetails: dto.OutputTokenDetails{
+			TextTokens:  10,
+			ImageTokens: 20,
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 0, summary.ImageInputTokens)
+	require.Equal(t, 20, summary.ImageOutputTokens)
+	require.Equal(t, 340, summary.Quota)
+}

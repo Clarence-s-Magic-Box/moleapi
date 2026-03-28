@@ -197,9 +197,41 @@ func UpdateOption(key string, value string) error {
 	return updateOptionMap(key, value)
 }
 
+func shouldIgnoreEmptyJSONOptionValue(key, value string) bool {
+	if strings.TrimSpace(value) != "" {
+		return false
+	}
+
+	switch key {
+	case "TopupGroupRatio",
+		"Chats",
+		"AutoGroups",
+		"PayMethods",
+		"ModelRequestRateLimitGroup",
+		"ModelRatio",
+		"ModelPrice",
+		"CacheRatio",
+		"CreateCacheRatio",
+		"GroupRatio",
+		"GroupGroupRatio",
+		"UserUsableGroups",
+		"CompletionRatio",
+		"ImageRatio",
+		"ImageOutputRatio",
+		"AudioRatio",
+		"AudioCompletionRatio":
+		return true
+	default:
+		return false
+	}
+}
+
 func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
+	if shouldIgnoreEmptyJSONOptionValue(key, value) {
+		return nil
+	}
 	common.OptionMap[key] = value
 
 	// 检查是否是模型配置 - 使用更规范的方式处理
