@@ -11,9 +11,9 @@ import (
 )
 
 var StartTime = time.Now().Unix() // unit: second
-var Version = "v0.9.6.6"          // this hard coding will be replaced automatically when building, no need to manually change
+var Version = "v0.9.7"            // this hard coding will be replaced automatically when building, no need to manually change
 // UpstreamVersion tracks the synced upstream new-api version for update checks and "Based on" display.
-var UpstreamVersion = "v0.11.9-alpha.3"
+var UpstreamVersion = "v0.12.6"
 
 // Commit is the build git commit SHA (typically short). It can be injected via ldflags or env.
 var Commit = ""
@@ -89,6 +89,7 @@ var InsecureTLSConfig = &tls.Config{InsecureSkipVerify: true}
 var SMTPServer = ""
 var SMTPPort = 587
 var SMTPSSLEnabled = false
+var SMTPForceAuthLogin = false
 var SMTPAccount = ""
 var SMTPFrom = ""
 var SMTPToken = ""
@@ -186,6 +187,7 @@ var (
 	DownloadRateLimitDuration int64 = 60
 
 	// Per-user search rate limit (applies after authentication, keyed by user ID)
+	SearchRateLimitEnable         = true
 	SearchRateLimitNum            = 10
 	SearchRateLimitDuration int64 = 60
 )
@@ -220,5 +222,6 @@ const (
 const (
 	TopUpStatusPending = "pending"
 	TopUpStatusSuccess = "success"
+	TopUpStatusFailed  = "failed"
 	TopUpStatusExpired = "expired"
 )

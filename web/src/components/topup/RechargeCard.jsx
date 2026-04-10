@@ -63,8 +63,11 @@ const RechargeCard = ({
   enableOnlineTopUp,
   enableStripeTopUp,
   enableCreemTopUp,
+  enableWaffoTopUp,
   creemProducts,
   creemPreTopUp,
+  waffoTopUp,
+  waffoPayMethods,
   presetAmounts,
   selectedPreset,
   selectPresetAmount,
@@ -110,6 +113,9 @@ const RechargeCard = ({
   const [activeTab, setActiveTab] = useState('topup');
   const shouldShowSubscription =
     !subscriptionLoading && subscriptionPlans.length > 0;
+  const standardPayMethods = (payMethods || []).filter(
+    (method) => method?.type !== 'waffo',
+  );
 
   const getBonusRateForAmount = (amountValue) => {
     let bonusMap = topupInfo?.bonus || {};
@@ -299,14 +305,17 @@ const RechargeCard = ({
           <div className='py-8 flex justify-center'>
             <Spin size='large' />
           </div>
-        ) : enableOnlineTopUp || enableStripeTopUp || enableCreemTopUp ? (
+        ) : enableOnlineTopUp ||
+          enableStripeTopUp ||
+          enableCreemTopUp ||
+          enableWaffoTopUp ? (
           <Form
             getFormApi={(api) => (onlineFormApiRef.current = api)}
             initValues={{ topUpCount: topUpCount }}
           >
             <div className='space-y-4'>
               {/* ① 选择充值额度 - 预设卡片在最上方 */}
-              {(enableOnlineTopUp || enableStripeTopUp) && (
+              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp) && (
                 <Form.Slot
                   label={
                     <div className='flex items-center gap-2'>
@@ -422,14 +431,14 @@ const RechargeCard = ({
               )}
 
               {/* ② 分割线 - 或输入自定义金额 */}
-              {(enableOnlineTopUp || enableStripeTopUp) && (
+              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp) && (
                 <Divider margin={12}>
                   <Text type='tertiary' style={{ fontSize: '13px' }}>{t('或输入自定义金额')}</Text>
                 </Divider>
               )}
 
               {/* ③ 充值数量 + 实付信息 */}
-              {(enableOnlineTopUp || enableStripeTopUp) && (
+              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp) && (
                 <div>
                   <div className='flex items-center justify-between mb-2'>
                     <Text strong style={{ fontSize: '14px' }}>{t('充值数量')}</Text>
@@ -465,7 +474,11 @@ const RechargeCard = ({
                   <Form.InputNumber
                     field='topUpCount'
                     noLabel={true}
-                    disabled={!enableOnlineTopUp && !enableStripeTopUp}
+                    disabled={
+                      !enableOnlineTopUp &&
+                      !enableStripeTopUp &&
+                      !enableWaffoTopUp
+                    }
                     placeholder={t('充值数量，最低 ') + renderQuotaWithAmount(minTopUp)}
                     value={topUpCount}
                     min={minTopUp}
@@ -496,9 +509,9 @@ const RechargeCard = ({
               {/* ④ 选择支付方式 */}
               {(enableOnlineTopUp || enableStripeTopUp) && (
                 <Form.Slot label={<Text strong style={{ fontSize: '14px' }}>{t('选择支付方式')}</Text>}>
-                  {payMethods && payMethods.length > 0 ? (
+                  {standardPayMethods.length > 0 ? (
                     <div className='flex flex-col gap-2'>
-                      {payMethods.map((payMethod) => {
+                      {standardPayMethods.map((payMethod) => {
                         const minTopupVal = Number(payMethod.min_topup) || 0;
                         const isStripe = payMethod.type === 'stripe';
                         const disabled =
@@ -568,8 +581,44 @@ const RechargeCard = ({
                 </Form.Slot>
               )}
 
+              {enableWaffoTopUp &&
+                waffoPayMethods &&
+                waffoPayMethods.length > 0 && (
+                  <Form.Slot label={<Text strong style={{ fontSize: '14px' }}>{t('Waffo 充值')}</Text>}>
+                    <Space wrap>
+                      {waffoPayMethods.map((method, index) => (
+                        <Button
+                          key={`${method.name || 'waffo'}-${index}`}
+                          theme='outline'
+                          type='tertiary'
+                          onClick={() => waffoTopUp(index)}
+                          loading={paymentLoading}
+                          icon={
+                            method.icon ? (
+                              <img
+                                src={method.icon}
+                                alt={method.name}
+                                style={{
+                                  width: 18,
+                                  height: 18,
+                                  objectFit: 'contain',
+                                }}
+                              />
+                            ) : (
+                              <CreditCard size={18} />
+                            )
+                          }
+                          className='!rounded-lg !px-4 !py-2'
+                        >
+                          {method.name}
+                        </Button>
+                      ))}
+                    </Space>
+                  </Form.Slot>
+                )}
+
               {/* 加赠方案说明（放在支付按钮下方） */}
-              {(enableOnlineTopUp || enableStripeTopUp) &&
+              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp) &&
                 topupInfo?.bonus &&
                 Object.keys(topupInfo.bonus).length > 0 && (
                   <div className='mt-4 mb-2'>
