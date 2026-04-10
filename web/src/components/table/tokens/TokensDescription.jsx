@@ -24,7 +24,10 @@ import CompactModeToggle from '../../common/ui/CompactModeToggle';
 import { copy, showError, showSuccess } from '../../../helpers';
 
 const { Text } = Typography;
-const BASE_URL = 'https://api.moleapi.com';
+const BASE_URL =
+  typeof window !== 'undefined' && window.location?.origin
+    ? window.location.origin
+    : 'https://your-api-domain.example.com';
 
 const TokensDescription = ({ compactMode, setCompactMode, t }) => {
   const handleCopyBaseUrl = async () => {
