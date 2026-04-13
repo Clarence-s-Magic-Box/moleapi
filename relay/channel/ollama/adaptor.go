@@ -2,6 +2,7 @@ package ollama
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -19,8 +20,18 @@ import (
 type Adaptor struct {
 }
 
-func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dto.GeminiChatRequest) (any, error) {
-	return nil, errors.New("not implemented")
+func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error) {
+	openaiAdaptor := openai.Adaptor{}
+	openaiRequest, err := openaiAdaptor.ConvertGeminiRequest(c, info, request)
+	if err != nil {
+		return nil, err
+	}
+
+	convertedRequest, ok := openaiRequest.(*dto.GeneralOpenAIRequest)
+	if !ok {
+		return nil, fmt.Errorf("unexpected gemini conversion result: %T", openaiRequest)
+	}
+	return openAIChatToOllamaChat(c, convertedRequest)
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
