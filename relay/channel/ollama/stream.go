@@ -111,6 +111,9 @@ func ollamaStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			model = chunk.Model
 		}
 		created = toUnix(chunk.CreatedAt)
+		if chunk.Done || ollamaChunkHasPayload(chunk) {
+			info.SetFirstResponseTime()
+		}
 
 		if (chunk.Done || ollamaChunkHasPayload(chunk)) && !sentStart {
 			if err := sendStartResponse(); err != nil {

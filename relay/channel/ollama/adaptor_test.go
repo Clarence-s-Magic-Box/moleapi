@@ -149,15 +149,10 @@ func TestDoResponseConvertsOllamaToClaudeStream(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
 
-	info := &relaycommon.RelayInfo{
-		RelayFormat: types.RelayFormatClaude,
-		IsStream:    true,
-		ChannelMeta: &relaycommon.ChannelMeta{
-			UpstreamModelName: "gpt-oss:120b",
-		},
-		ClaudeConvertInfo: &relaycommon.ClaudeConvertInfo{
-			LastMessagesType: relaycommon.LastMessageTypeNone,
-		},
+	info := relaycommon.GenRelayInfoClaude(c, nil)
+	info.IsStream = true
+	info.ChannelMeta = &relaycommon.ChannelMeta{
+		UpstreamModelName: "gpt-oss:120b",
 	}
 
 	streamBody := strings.Join([]string{
@@ -180,6 +175,8 @@ func TestDoResponseConvertsOllamaToClaudeStream(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, 12, usage.PromptTokens)
 	require.Equal(t, 7, usage.CompletionTokens)
+	require.True(t, info.HasSendResponse())
+	require.GreaterOrEqual(t, info.FirstResponseTime.Sub(info.StartTime).Milliseconds(), int64(0))
 
 	body := recorder.Body.String()
 	require.Contains(t, body, "event: message_start")
@@ -196,12 +193,10 @@ func TestDoResponseConvertsOllamaToGeminiStream(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gpt-oss:120b:streamGenerateContent", nil)
 
-	info := &relaycommon.RelayInfo{
-		RelayFormat: types.RelayFormatGemini,
-		IsStream:    true,
-		ChannelMeta: &relaycommon.ChannelMeta{
-			UpstreamModelName: "gpt-oss:120b",
-		},
+	info := relaycommon.GenRelayInfoGemini(c, nil)
+	info.IsStream = true
+	info.ChannelMeta = &relaycommon.ChannelMeta{
+		UpstreamModelName: "gpt-oss:120b",
 	}
 
 	streamBody := strings.Join([]string{
@@ -223,6 +218,8 @@ func TestDoResponseConvertsOllamaToGeminiStream(t *testing.T) {
 	usage, ok := usageAny.(*dto.Usage)
 	require.True(t, ok)
 	require.Equal(t, 19, usage.TotalTokens)
+	require.True(t, info.HasSendResponse())
+	require.GreaterOrEqual(t, info.FirstResponseTime.Sub(info.StartTime).Milliseconds(), int64(0))
 
 	body := recorder.Body.String()
 	require.Contains(t, body, `"text":"hel"`)
