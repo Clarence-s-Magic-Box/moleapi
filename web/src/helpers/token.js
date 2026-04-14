@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { API } from './api';
 
+export const PUBLIC_API_BASE_URL = 'https://api.moleapi.com';
+
 /**
  * 按需获取单个令牌的真实 key
  * @param {number|string} tokenId
@@ -76,23 +78,9 @@ export async function fetchTokenKeys() {
  * @returns {string} 服务器地址
  */
 export function getServerAddress() {
-  let status = localStorage.getItem('status');
-  let serverAddress = '';
-
-  if (status) {
-    try {
-      status = JSON.parse(status);
-      serverAddress = status.server_address || '';
-    } catch (error) {
-      console.error('Failed to parse status from localStorage:', error);
-    }
-  }
-
-  if (!serverAddress) {
-    serverAddress = window.location.origin;
-  }
-
-  return serverAddress;
+  // The public token console should always direct users to the API domain,
+  // not the current frontend origin.
+  return PUBLIC_API_BASE_URL;
 }
 
 export const CHANNEL_CONN_CLIPBOARD_TYPE = 'newapi_channel_conn';
