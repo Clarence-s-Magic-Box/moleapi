@@ -55,6 +55,7 @@
 ## 📝 Description du projet
 
 > [!IMPORTANT]
+> - `mole-api` est un fork open source de `QuantumNous/new-api`, publié comme projet public MoleAPI tout en conservant l'attribution au projet amont
 > - Ce projet est uniquement destiné à des fins d'apprentissage personnel, sans garantie de stabilité ni de support technique.
 > - Les utilisateurs doivent se conformer aux [Conditions d'utilisation](https://openai.com/policies/terms-of-use) d'OpenAI et aux **lois et réglementations applicables**, et ne doivent pas l'utiliser à des fins illégales.
 > - Conformément aux [《Mesures provisoires pour la gestion des services d'intelligence artificielle générative》](http://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm), veuillez ne fournir aucun service d'IA générative non enregistré au public en Chine.
