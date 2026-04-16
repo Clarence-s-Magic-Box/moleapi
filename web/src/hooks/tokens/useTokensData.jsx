@@ -23,6 +23,7 @@ import { Modal } from '@douyinfe/semi-ui';
 import {
   API,
   copy,
+  getServerAddress,
   showError,
   showSuccess,
   encodeToBase64,
@@ -213,15 +214,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       openFluentNotification(fullKey);
       return;
     }
-    let status = localStorage.getItem('status');
-    let serverAddress = '';
-    if (status) {
-      status = JSON.parse(status);
-      serverAddress = status.server_address;
-    }
-    if (serverAddress === '') {
-      serverAddress = window.location.origin;
-    }
+    const serverAddress = getServerAddress();
     if (url.includes('{cherryConfig}') === true) {
       let cherryConfig = {
         id: 'new-api',

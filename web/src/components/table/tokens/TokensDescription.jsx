@@ -21,13 +21,15 @@ import React from 'react';
 import { Button, Typography } from '@douyinfe/semi-ui';
 import { Copy, Globe, Key, ShieldAlert } from 'lucide-react';
 import CompactModeToggle from '../../common/ui/CompactModeToggle';
-import { copy, showError, showSuccess } from '../../../helpers';
+import {
+  copy,
+  getServerAddress,
+  showError,
+  showSuccess,
+} from '../../../helpers';
 
 const { Text } = Typography;
-const BASE_URL =
-  typeof window !== 'undefined' && window.location?.origin
-    ? window.location.origin
-    : 'https://your-api-domain.example.com';
+const BASE_URL = getServerAddress();
 
 const TokensDescription = ({ compactMode, setCompactMode, t }) => {
   const handleCopyBaseUrl = async () => {
