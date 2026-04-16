@@ -379,6 +379,10 @@ func EpayNotify(c *gin.Context) {
 			log.Printf("易支付回调未找到订单: %v", verifyInfo)
 			return
 		}
+		if !common.PaymentGatewayMatches(topUp.PaymentMethod, common.PaymentGatewayEpay) {
+			log.Printf("易支付回调订单支付方式不匹配: %s, 订单号: %s", topUp.PaymentMethod, verifyInfo.ServiceTradeNo)
+			return
+		}
 		if topUp.Status == "pending" {
 			topUp.Status = "success"
 			err := topUp.Update()
