@@ -24,13 +24,13 @@ import (
 const (
 	lanTuDefaultApiBase = "https://api.ltzf.cn"
 	lanTuNativePath     = "/api/wxpay/native"
-	lanTuJumpH5Path    = "/api/wxpay/jump_h5"
-	lanTuGetOrderPath  = "/api/wxpay/get_pay_order"
-	lanTuFailCode      = 1 // 查询订单失败状态码（legacy 约定）
-	lanTuUnpaidCode    = 0 // 未支付状态码（legacy 约定）
-	lanTuOrderTTL      = 300
-	lanTuDefaultBody   = "充值"
-	lanTuPaymentMethod = "lantu"
+	lanTuJumpH5Path     = "/api/wxpay/jump_h5"
+	lanTuGetOrderPath   = "/api/wxpay/get_pay_order"
+	lanTuFailCode       = 1 // 查询订单失败状态码（legacy 约定）
+	lanTuUnpaidCode     = 0 // 未支付状态码（legacy 约定）
+	lanTuOrderTTL       = 300
+	lanTuDefaultBody    = "充值"
+	lanTuPaymentMethod  = "lantu"
 )
 
 type LanTuConfig struct {
@@ -208,7 +208,7 @@ func RequestLanTuPay(c *gin.Context) {
 			"pay_link_kind": payLinkKind, // "qr_image" | "qr_text" | "url"
 			// Helpful for QR modal verification; aligns with upstream total_fee (2 decimals).
 			"pay_money": paramsToSign["total_fee"],
-			"trade_no": tradeNo,
+			"trade_no":  tradeNo,
 			// Helps debugging upstream issues (safe to ignore on frontend).
 			"request_id": reqID,
 			// "native" -> QR code URL; "h5" -> jump URL.
@@ -253,6 +253,10 @@ func LanTuPayNotify(c *gin.Context) {
 	topUp := model.GetTopUpByTradeNo(outTradeNo)
 	if topUp == nil {
 		c.String(http.StatusOK, "FAIL")
+		return
+	}
+	if !common.PaymentGatewayMatches(topUp.PaymentMethod, common.PaymentGatewayLanTu) {
+		c.String(http.StatusOK, "SUCCESS")
 		return
 	}
 

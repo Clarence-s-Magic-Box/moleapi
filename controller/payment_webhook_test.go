@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/Calcium-Ion/go-epay/epay"
@@ -144,6 +145,83 @@ func TestEpayNotifyIgnoresNonEpayOrder(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "success", recorder.Body.String())
+
+	reloadedTopUp := loadWebhookTopUp(t, db, topUp.Id)
+	require.Equal(t, common.TopUpStatusPending, reloadedTopUp.Status)
+}
+
+func TestEpayNotifyIgnoresLanTuOrder(t *testing.T) {
+	db := setupPaymentWebhookTestDB(t)
+	topUp := insertWebhookTopUp(t, db, "epay_to_lantu_order", lanTuPaymentMethod, common.TopUpStatusPending)
+
+	originalPayAddress := operation_setting.PayAddress
+	originalEpayID := operation_setting.EpayId
+	originalEpayKey := operation_setting.EpayKey
+	t.Cleanup(func() {
+		operation_setting.PayAddress = originalPayAddress
+		operation_setting.EpayId = originalEpayID
+		operation_setting.EpayKey = originalEpayKey
+	})
+
+	operation_setting.PayAddress = "https://payment.example.com"
+	operation_setting.EpayId = "partner-test"
+	operation_setting.EpayKey = "secret-test"
+
+	params := epay.GenerateParams(map[string]string{
+		"pid":          operation_setting.EpayId,
+		"type":         "alipay",
+		"trade_no":     "epay-456",
+		"out_trade_no": topUp.TradeNo,
+		"name":         "TUC10",
+		"money":        "1.23",
+		"trade_status": epay.StatusTradeSuccess,
+	}, operation_setting.EpayKey)
+
+	query := url.Values{}
+	for key, value := range params {
+		query.Set(key, value)
+	}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/epay/notify?"+query.Encode(), nil)
+
+	EpayNotify(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "success", recorder.Body.String())
+
+	reloadedTopUp := loadWebhookTopUp(t, db, topUp.Id)
+	require.Equal(t, common.TopUpStatusPending, reloadedTopUp.Status)
+}
+
+func TestLanTuNotifyIgnoresNonLanTuOrder(t *testing.T) {
+	db := setupPaymentWebhookTestDB(t)
+	topUp := insertWebhookTopUp(t, db, "lantu_to_epay_order", "alipay", common.TopUpStatusPending)
+
+	originalMchID := common.LantuMchId
+	originalSecretKey := common.LantuSecretKey
+	t.Cleanup(func() {
+		common.LantuMchId = originalMchID
+		common.LantuSecretKey = originalSecretKey
+	})
+
+	common.LantuMchId = "mch_test"
+	common.LantuSecretKey = "secret_test"
+
+	form := url.Values{}
+	form.Set("out_trade_no", topUp.TradeNo)
+	form.Set("mch_id", common.LantuMchId)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/user/lantu/notify", strings.NewReader(form.Encode()))
+	ctx.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	LanTuPayNotify(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "SUCCESS", recorder.Body.String())
 
 	reloadedTopUp := loadWebhookTopUp(t, db, topUp.Id)
 	require.Equal(t, common.TopUpStatusPending, reloadedTopUp.Status)

@@ -649,7 +649,7 @@ func (info *RelayInfo) SetFirstResponseTime() {
 }
 
 func (info *RelayInfo) HasSendResponse() bool {
-	return info.FirstResponseTime.After(info.StartTime)
+	return !info.FirstResponseTime.Before(info.StartTime)
 }
 
 type TaskRelayInfo struct {
