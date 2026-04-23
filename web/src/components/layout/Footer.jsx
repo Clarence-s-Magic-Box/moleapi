@@ -41,6 +41,17 @@ const FooterBar = () => {
   };
 
   const currentYear = new Date().getFullYear();
+  const formatFooterVersion = (version, { stripSuffix = false } = {}) => {
+    const raw = String(version || '').trim();
+    if (!raw) return '';
+    const normalized = raw.replace(/^v/i, '');
+    const display = stripSuffix ? normalized.split('-')[0] : normalized;
+    return display ? `v${display}` : '';
+  };
+  const projectDisplayVersion = formatFooterVersion(projectVersion, {
+    stripSuffix: true,
+  });
+  const upstreamDisplayVersion = formatFooterVersion(upstreamVersion);
 
   const customFooter = useMemo(() => {
     return (
@@ -49,6 +60,22 @@ const FooterBar = () => {
         style={{ border: 'none', outline: 'none' }}
       >
         <div className='flex flex-col items-center justify-center w-full max-w-[1110px] gap-0.5 text-center'>
+          <div className='text-xs flex flex-wrap items-center justify-center gap-1 !text-semi-color-text-1'>
+            <Typography.Text className='!text-semi-color-text-1'>
+              © {currentYear} {systemName}
+              {projectDisplayVersion ? ` ${projectDisplayVersion}` : ''}{' '}
+              {t('设计与开发由')}{' '}
+              <a
+                href='https://github.com/ClarenceDan'
+                target='_blank'
+                rel='noreferrer'
+                className='!text-semi-color-primary font-medium'
+              >
+                ClarenceDan
+              </a>
+            </Typography.Text>
+          </div>
+
           <div className='text-xs !text-semi-color-text-1'>
             <div className='footer-sub'>
               Based on{' '}
@@ -58,14 +85,8 @@ const FooterBar = () => {
                 rel='noreferrer'
                 className='!text-semi-color-primary font-medium'
               >
-                New API {upstreamVersion}
+                New API {upstreamDisplayVersion || upstreamVersion}
               </a>{' '}
-              {projectVersion ? (
-                <>
-                  {' '}
-                  || MoleAPI {projectVersion}
-                </>
-              ) : null}{' '}
               by{' '}
               <a
                 href='https://github.com/QuantumNous'
@@ -95,28 +116,15 @@ const FooterBar = () => {
               </a>
             </div>
           </div>
-
-          <div className='text-xs flex flex-wrap items-center justify-center gap-2'>
-            <Typography.Text className='!text-semi-color-text-1'>
-              © {currentYear} {systemName}. {t('设计与开发由')}{' '}
-              <a
-                href='https://github.com/ClarenceDan'
-                target='_blank'
-                rel='noreferrer'
-                className='!text-semi-color-primary font-medium'
-              >
-                ClarenceDan
-              </a>
-            </Typography.Text>
-          </div>
         </div>
       </footer>
     );
   }, [
     currentYear,
-    projectVersion,
+    projectDisplayVersion,
     systemName,
     t,
+    upstreamDisplayVersion,
     upstreamVersion,
   ]);
 

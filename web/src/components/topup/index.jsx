@@ -601,6 +601,11 @@ const TopUp = () => {
           amount_options: data.amount_options || [],
           bonus: parsedBonus || {},
           discount: parsedDiscount || {},
+          quota_for_inviter: Number(data.quota_for_inviter || 0),
+          quota_for_invitee: Number(data.quota_for_invitee || 0),
+          quota_for_inviter_on_first_topup: Number(
+            data.quota_for_inviter_on_first_topup || 0,
+          ),
         });
         const ratioNum = Number(data.topup_group_ratio);
         setTopupGroupRatio(
