@@ -36,6 +36,7 @@ export default function SettingsCreditLimit(props) {
     PreConsumedQuota: '',
     QuotaForInviter: '',
     QuotaForInvitee: '',
+    QuotaForInviterOnFirstTopup: '',
     'quota_setting.enable_free_model_pre_consume': true,
   });
   const refForm = useRef();
@@ -162,6 +163,23 @@ export default function SettingsCreditLimit(props) {
                     setInputs({
                       ...inputs,
                       QuotaForInvitee: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('邀请好友首笔充值奖励额度')}
+                  field={'QuotaForInviterOnFirstTopup'}
+                  step={1}
+                  min={0}
+                  suffix={'Token'}
+                  extraText={t('为 0 时表示关闭该奖励')}
+                  placeholder={t('例如：2000')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      QuotaForInviterOnFirstTopup: String(value),
                     })
                   }
                 />

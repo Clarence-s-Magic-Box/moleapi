@@ -231,9 +231,11 @@ func LanTuPayNotify(c *gin.Context) {
 		outTradeNo = c.PostForm("out_trade_no")
 		mchId = c.PostForm("mch_id")
 	}
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("LanTu webhook 收到请求 path=%q client_ip=%s out_trade_no=%s mch_id=%s", c.Request.RequestURI, c.ClientIP(), outTradeNo, mchId))
 
 	cfg := GetLanTuPayConfig()
 	if cfg == nil {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("LanTu webhook 被拒绝 reason=webhook_disabled path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
 		c.String(http.StatusOK, "FAIL")
 		return
 	}
@@ -242,6 +244,7 @@ func LanTuPayNotify(c *gin.Context) {
 		mchId = cfg.MchId
 	}
 	if outTradeNo == "" {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("LanTu webhook 缺少订单号 path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
 		c.String(http.StatusOK, "FAIL")
 		return
 	}
@@ -252,16 +255,19 @@ func LanTuPayNotify(c *gin.Context) {
 
 	topUp := model.GetTopUpByTradeNo(outTradeNo)
 	if topUp == nil {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("LanTu webhook 未找到本地订单 trade_no=%s client_ip=%s", outTradeNo, c.ClientIP()))
 		c.String(http.StatusOK, "FAIL")
 		return
 	}
 	if !common.PaymentGatewayMatches(topUp.PaymentMethod, common.PaymentGatewayLanTu) {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("LanTu webhook 订单支付方式不匹配 trade_no=%s payment_method=%s client_ip=%s", outTradeNo, topUp.PaymentMethod, c.ClientIP()))
 		c.String(http.StatusOK, "SUCCESS")
 		return
 	}
 
 	// Already processed.
 	if topUp.Status != common.TopUpStatusPending {
+		logger.LogInfo(c.Request.Context(), fmt.Sprintf("LanTu webhook 订单已处理，忽略重复回调 trade_no=%s status=%s client_ip=%s", outTradeNo, topUp.Status, c.ClientIP()))
 		c.String(http.StatusOK, "SUCCESS")
 		return
 	}
@@ -270,16 +276,19 @@ func LanTuPayNotify(c *gin.Context) {
 	if time.Now().Unix()-topUp.CreateTime > lanTuOrderTTL {
 		topUp.Status = common.TopUpStatusExpired
 		_ = topUp.Update()
+		logger.LogInfo(c.Request.Context(), fmt.Sprintf("LanTu webhook 订单已过期 trade_no=%s client_ip=%s", outTradeNo, c.ClientIP()))
 		c.String(http.StatusOK, "SUCCESS")
 		return
 	}
 
 	paid, err := lanTuCheckPaid(cfg, mchId, outTradeNo)
 	if err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("LanTu webhook 查询上游订单失败 trade_no=%s mch_id=%s client_ip=%s error=%q", outTradeNo, mchId, c.ClientIP(), err.Error()))
 		c.String(http.StatusOK, "FAIL")
 		return
 	}
 	if !paid {
+		logger.LogInfo(c.Request.Context(), fmt.Sprintf("LanTu webhook 上游订单未支付 trade_no=%s mch_id=%s client_ip=%s", outTradeNo, mchId, c.ClientIP()))
 		c.String(http.StatusOK, "FAIL")
 		return
 	}
@@ -287,6 +296,7 @@ func LanTuPayNotify(c *gin.Context) {
 	topUp.Status = common.TopUpStatusSuccess
 	topUp.CompleteTime = common.GetTimestamp()
 	if err := topUp.Update(); err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("LanTu webhook 更新订单状态失败 trade_no=%s client_ip=%s error=%q", outTradeNo, c.ClientIP(), err.Error()))
 		c.String(http.StatusOK, "FAIL")
 		return
 	}
@@ -297,11 +307,19 @@ func LanTuPayNotify(c *gin.Context) {
 	dBonusMultiplier := decimal.NewFromFloat(1.0 + bonusRate)
 	quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).Mul(dBonusMultiplier).IntPart())
 	if err := model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true); err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("LanTu webhook 更新用户额度失败 trade_no=%s user_id=%d client_ip=%s error=%q", outTradeNo, topUp.UserId, c.ClientIP(), err.Error()))
 		c.String(http.StatusOK, "FAIL")
 		return
 	}
+	inviterId, inviterRewardQuota, inviterRewardGranted, rewardErr := model.RewardInviterOnFirstTopup(topUp.UserId)
+	if rewardErr != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("LanTu webhook 发放邀请首充奖励失败 trade_no=%s user_id=%d client_ip=%s error=%q", outTradeNo, topUp.UserId, c.ClientIP(), rewardErr.Error()))
+	} else if inviterRewardGranted {
+		logger.LogInfo(c.Request.Context(), fmt.Sprintf("LanTu webhook 发放邀请首充奖励成功 trade_no=%s inviter_id=%d reward=%d client_ip=%s", outTradeNo, inviterId, inviterRewardQuota, c.ClientIP()))
+	}
 
 	model.RecordLog(topUp.UserId, model.LogTypeTopup, fmt.Sprintf("使用蓝兔支付充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("LanTu webhook 充值成功 trade_no=%s user_id=%d quota=%d money=%.2f client_ip=%s", outTradeNo, topUp.UserId, quotaToAdd, topUp.Money, c.ClientIP()))
 	c.String(http.StatusOK, "SUCCESS")
 }
 

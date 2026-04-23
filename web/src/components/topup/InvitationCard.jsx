@@ -38,7 +38,20 @@ const InvitationCard = ({
   setOpenTransfer,
   affLink,
   handleAffLinkClick,
+  topupInfo,
 }) => {
+  const inviterReward = Number(topupInfo?.quota_for_inviter || 0);
+  const inviteeReward = Number(topupInfo?.quota_for_invitee || 0);
+  const inviterTopupReward = Number(
+    topupInfo?.quota_for_inviter_on_first_topup || 0,
+  );
+  const renderRewardText = (quota) => {
+    if (!Number.isFinite(quota) || quota <= 0) {
+      return '0';
+    }
+    return renderQuota(quota);
+  };
+
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
       {/* 卡片头部 */}
@@ -209,21 +222,36 @@ const InvitationCard = ({
             <div className='flex items-start gap-2'>
               <Badge dot type='success' />
               <Text type='tertiary' className='text-sm'>
-                {t('邀请好友注册，好友充值后您可获得相应奖励')}
+                {t('每邀请 1 位好友注册，您可获得 {{reward}} 邀请额度', {
+                  reward: renderRewardText(inviterReward),
+                })}
               </Text>
             </div>
 
             <div className='flex items-start gap-2'>
               <Badge dot type='success' />
               <Text type='tertiary' className='text-sm'>
-                {t('通过划转功能将奖励额度转入到您的账户余额中')}
+                {t('好友使用邀请码注册后，可获得 {{reward}} 账户额度', {
+                  reward: renderRewardText(inviteeReward),
+                })}
               </Text>
             </div>
 
             <div className='flex items-start gap-2'>
               <Badge dot type='success' />
               <Text type='tertiary' className='text-sm'>
-                {t('邀请的好友越多，获得的奖励越多')}
+                {inviterTopupReward > 0
+                  ? t('好友完成首笔充值后，您还可额外获得 {{reward}} 邀请额度', {
+                      reward: renderRewardText(inviterTopupReward),
+                    })
+                  : t('当前未开启好友首笔充值奖励')}
+              </Text>
+            </div>
+
+            <div className='flex items-start gap-2'>
+              <Badge dot type='success' />
+              <Text type='tertiary' className='text-sm'>
+                {t('邀请奖励会先进入邀请额度，可通过划转功能转入账户余额')}
               </Text>
             </div>
           </div>

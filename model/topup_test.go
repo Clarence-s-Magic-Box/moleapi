@@ -19,6 +19,7 @@ func insertTopUpTestUser(t *testing.T, username string, quota int, email string)
 		Status:      common.UserStatusEnabled,
 		Email:       email,
 		Group:       "default",
+		AffCode:     common.GetRandomString(8),
 		Quota:       quota,
 		Setting:     "{}",
 	}
@@ -109,4 +110,36 @@ func TestRechargeWaffoRejectsMismatchedPaymentMethod(t *testing.T) {
 	reloadedTopUp := reloadTopUp(t, topUp.Id)
 	require.Equal(t, common.TopUpStatusPending, reloadedTopUp.Status)
 	require.EqualValues(t, 0, reloadedTopUp.CompleteTime)
+}
+
+func TestRechargeAwardsInviterFirstTopupRewardOnlyOnce(t *testing.T) {
+	truncateTables(t)
+
+	originalReward := common.QuotaForInviterOnFirstTopup
+	common.QuotaForInviterOnFirstTopup = 2000
+	t.Cleanup(func() {
+		common.QuotaForInviterOnFirstTopup = originalReward
+	})
+
+	inviter := insertTopUpTestUser(t, "inviter_"+strings.ReplaceAll(t.Name(), "/", "_"), 0, "")
+	invitee := insertTopUpTestUser(t, "invitee_"+strings.ReplaceAll(t.Name(), "/", "_"), 0, "")
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", invitee.Id).Update("inviter_id", inviter.Id).Error)
+
+	firstTopUp := insertTopUpRecord(t, invitee.Id, "trade_first_topup_reward", PaymentMethodStripe)
+	require.NoError(t, Recharge(firstTopUp.TradeNo, "cus_first"))
+
+	reloadedInviter := reloadUser(t, inviter.Id)
+	reloadedInvitee := reloadUser(t, invitee.Id)
+	require.Equal(t, 2000, reloadedInviter.AffQuota)
+	require.Equal(t, 2000, reloadedInviter.AffHistoryQuota)
+	require.True(t, reloadedInvitee.InviterTopupRewarded)
+
+	secondTopUp := insertTopUpRecord(t, invitee.Id, "trade_second_topup_reward", PaymentMethodStripe)
+	require.NoError(t, Recharge(secondTopUp.TradeNo, "cus_second"))
+
+	reloadedInviter = reloadUser(t, inviter.Id)
+	reloadedInvitee = reloadUser(t, invitee.Id)
+	require.Equal(t, 2000, reloadedInviter.AffQuota)
+	require.Equal(t, 2000, reloadedInviter.AffHistoryQuota)
+	require.True(t, reloadedInvitee.InviterTopupRewarded)
 }

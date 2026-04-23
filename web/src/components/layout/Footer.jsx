@@ -48,21 +48,7 @@ const FooterBar = () => {
         className='relative h-auto py-8 px-6 md:px-24 w-full flex flex-col items-center justify-between overflow-hidden mt-6 border-none'
         style={{ border: 'none', outline: 'none' }}
       >
-        <div className='flex flex-col items-center justify-center w-full max-w-[1110px] gap-1 text-center'>
-          <div className='text-xs flex flex-wrap items-center justify-center gap-2'>
-            <Typography.Text className='!text-semi-color-text-1'>
-              © {currentYear} {systemName}. {t('设计与开发由')}{' '}
-              <a
-                href='https://github.com/ClarenceDan'
-                target='_blank'
-                rel='noreferrer'
-                className='!text-semi-color-primary font-medium'
-              >
-                ClarenceDan
-              </a>
-            </Typography.Text>
-          </div>
-
+        <div className='flex flex-col items-center justify-center w-full max-w-[1110px] gap-0.5 text-center'>
           <div className='text-xs !text-semi-color-text-1'>
             <div className='footer-sub'>
               Based on{' '}
@@ -108,6 +94,20 @@ const FooterBar = () => {
                 JustSong
               </a>
             </div>
+          </div>
+
+          <div className='text-xs flex flex-wrap items-center justify-center gap-2'>
+            <Typography.Text className='!text-semi-color-text-1'>
+              © {currentYear} {systemName}. {t('设计与开发由')}{' '}
+              <a
+                href='https://github.com/ClarenceDan'
+                target='_blank'
+                rel='noreferrer'
+                className='!text-semi-color-primary font-medium'
+              >
+                ClarenceDan
+              </a>
+            </Typography.Text>
           </div>
         </div>
       </footer>

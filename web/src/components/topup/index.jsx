@@ -1181,6 +1181,7 @@ const TopUp = () => {
             setOpenTransfer={setOpenTransfer}
             affLink={affLink}
             handleAffLinkClick={handleAffLinkClick}
+            topupInfo={topupInfo}
           />
         </div>
       </div>
