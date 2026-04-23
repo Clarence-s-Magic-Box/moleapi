@@ -39,6 +39,7 @@ export default function SettingsGeneralPayment(props) {
     PayMethods: '',
     AmountOptions: '',
     AmountDiscount: '',
+    AmountBonus: '',
   });
   const [originInputs, setOriginInputs] = useState({});
   const formApiRef = useRef(null);
@@ -52,6 +53,7 @@ export default function SettingsGeneralPayment(props) {
         PayMethods: props.options.PayMethods || '',
         AmountOptions: props.options.AmountOptions || '',
         AmountDiscount: props.options.AmountDiscount || '',
+        AmountBonus: props.options.AmountBonus || '',
       };
       setInputs(currentInputs);
       setOriginInputs({ ...currentInputs });
@@ -98,6 +100,15 @@ export default function SettingsGeneralPayment(props) {
       return;
     }
 
+    if (
+      originInputs.AmountBonus !== inputs.AmountBonus &&
+      inputs.AmountBonus.trim() !== '' &&
+      !verifyJSON(inputs.AmountBonus)
+    ) {
+      showError(t('充值加赠配置不是合法的 JSON 对象'));
+      return;
+    }
+
     setLoading(true);
     try {
       const options = [
@@ -129,6 +140,12 @@ export default function SettingsGeneralPayment(props) {
         options.push({
           key: 'payment_setting.amount_discount',
           value: inputs.AmountDiscount,
+        });
+      }
+      if (originInputs.AmountBonus !== inputs.AmountBonus) {
+        options.push({
+          key: 'payment_setting.amount_bonus',
+          value: inputs.AmountBonus,
         });
       }
 
@@ -234,6 +251,21 @@ export default function SettingsGeneralPayment(props) {
                 autosize
                 extraText={t(
                   '设置不同充值金额对应的折扣，键为充值金额，值为折扣率，例如：{"100": 0.95, "200": 0.9, "500": 0.85}',
+                )}
+              />
+            </Col>
+          </Row>
+          <Row style={{ marginTop: 16 }}>
+            <Col span={24}>
+              <Form.TextArea
+                field='AmountBonus'
+                label={t('充值加赠配置')}
+                placeholder={t(
+                  '为一个 JSON 对象，例如：{"100": 0.05, "200": 0.1, "500": 0.2}',
+                )}
+                autosize
+                extraText={t(
+                  '设置不同充值金额对应的额外赠送比例，键为充值金额，值为加赠比例（如 0.05 表示送 5%）。',
                 )}
               />
             </Col>

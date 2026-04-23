@@ -24,6 +24,8 @@ import {
   Input,
   ScrollList,
   ScrollItem,
+  Row,
+  Col,
 } from '@douyinfe/semi-ui';
 import { API, showError, copy, showSuccess } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
@@ -32,12 +34,13 @@ import { StatusContext } from '../../context/Status';
 import { useActualTheme } from '../../context/Theme';
 import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
+import { IconGithubLogo, IconCopy } from '@douyinfe/semi-icons';
 import {
-  IconGithubLogo,
-  IconPlay,
-  IconFile,
-  IconCopy,
-} from '@douyinfe/semi-icons';
+  IconAccessibility,
+  IconBadgeStar,
+  IconTag,
+  IconColorPlatte,
+} from '@douyinfe/semi-icons-lab';
 import { Link } from 'react-router-dom';
 import NoticeModal from '../../components/layout/NoticeModal';
 import {
@@ -63,6 +66,8 @@ import {
   Xinference,
 } from '@lobehub/icons';
 
+import './home.css';
+
 const { Text } = Typography;
 
 const Home = () => {
@@ -74,13 +79,51 @@ const Home = () => {
   const [noticeVisible, setNoticeVisible] = useState(false);
   const isMobile = useIsMobile();
   const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
-  const docsLink = statusState?.status?.docs_link || '';
   const serverAddress =
     statusState?.status?.server_address || `${window.location.origin}`;
   const endpointItems = API_ENDPOINTS.map((e) => ({ value: e }));
   const [endpointIndex, setEndpointIndex] = useState(0);
   const isChinese = i18n.language.startsWith('zh');
+  const systemName = statusState?.status?.system_name || 'MoleAPI';
 
+  // 打字机效果相关状态
+  const [currentText, setCurrentText] = useState('');
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const slogans = [
+    t('一键接入，极致体验'),
+    t('统一接口，无缝切换'),
+    t('更优价格，更强兼容'),
+    t('简单配置，即刻使用'),
+    t('多模型聚合，一站服务'),
+  ];
+  const featureCards = [
+    {
+      key: 'platform',
+      icon: IconAccessibility,
+      title: t('多平台支持'),
+      description: t(
+        '支持OpenAI、Anthropic Claude、Google Gemini等多个 AI 平台',
+      ),
+    },
+    {
+      key: 'security',
+      icon: IconBadgeStar,
+      title: t('安全管理'),
+      description: t(
+        '提供 API 密钥二次分发管理，支持 KEY 级额度控制，成本可控',
+      ),
+    },
+    {
+      key: 'service',
+      icon: IconTag,
+      title: t('一站式服务'),
+      description: t(
+        '多个 AI 平台聚合，统一出口 API 端点，便捷的一站式 AI 服务体验',
+      ),
+    },
+  ];
   const displayHomePageContent = async () => {
     setHomePageContent(localStorage.getItem('home_page_content') || '');
     const res = await API.get('/api/home_page_content');
@@ -141,12 +184,46 @@ const Home = () => {
     displayHomePageContent().then();
   }, []);
 
+  // 语言切换时重置打字机效果
+  useEffect(() => {
+    setCurrentText('');
+    setCurrentIndex(0);
+    setIsDeleting(false);
+  }, [i18n.language]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setEndpointIndex((prev) => (prev + 1) % endpointItems.length);
     }, 3000);
     return () => clearInterval(timer);
   }, [endpointItems.length]);
+
+  // 打字机效果
+  useEffect(() => {
+    const currentSlogan = slogans[currentIndex] || '';
+
+    const typewriterTimer = setTimeout(
+      () => {
+        if (!isDeleting) {
+          if (currentText.length < currentSlogan.length) {
+            setCurrentText(currentSlogan.slice(0, currentText.length + 1));
+          } else {
+            setTimeout(() => setIsDeleting(true), 2000);
+          }
+        } else {
+          if (currentText.length > 0) {
+            setCurrentText(currentText.slice(0, -1));
+          } else {
+            setIsDeleting(false);
+            setCurrentIndex((prev) => (prev + 1) % slogans.length);
+          }
+        }
+      },
+      isDeleting ? 50 : 100,
+    );
+
+    return () => clearTimeout(typewriterTimer);
+  }, [currentText, currentIndex, isDeleting, slogans]);
 
   return (
     <div className='w-full overflow-x-hidden'>
@@ -160,8 +237,7 @@ const Home = () => {
           {/* Banner 部分 */}
           <div className='w-full border-b border-semi-color-border min-h-[500px] md:min-h-[600px] lg:min-h-[700px] relative overflow-x-hidden'>
             {/* 背景模糊晕染球 */}
-            <div className='blur-ball blur-ball-indigo' />
-            <div className='blur-ball blur-ball-teal' />
+            <div className='gradient-circle' />
             <div className='flex items-center justify-center h-full px-4 py-20 md:py-24 lg:py-32 mt-10'>
               {/* 居中内容区 */}
               <div className='flex flex-col items-center justify-center text-center max-w-4xl mx-auto'>
@@ -169,14 +245,16 @@ const Home = () => {
                   <h1
                     className={`text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-semi-color-text-0 leading-tight ${isChinese ? 'tracking-wide md:tracking-wider' : ''}`}
                   >
-                    <>
-                      {t('统一的')}
-                      <br />
-                      <span className='shine-text'>{t('大模型接口网关')}</span>
-                    </>
+                    <span className='shine-text'>{systemName}</span>
                   </h1>
-                  <p className='text-base md:text-lg lg:text-xl text-semi-color-text-1 mt-4 md:mt-6 max-w-xl'>
-                    {t('更好的价格，更好的稳定性，只需要将模型基址替换为：')}
+                  <h2 className='text-lg md:text-xl lg:text-2xl font-bold text-semi-color-text-1 mt-2 mb-4'>
+                    {t('统一的大模型网关接口')}
+                  </h2>
+                  <p className='text-sm md:text-base lg:text-lg text-semi-color-text-1 mt-4 md:mt-6 max-w-xl min-h-[1.5em] flex items-center justify-center'>
+                    <span className='typewriter-text'>
+                      {currentText}
+                      <span className='typewriter-cursor'>|</span>
+                    </span>
                   </p>
                   {/* BASE URL 与端点选择 */}
                   <div className='flex flex-col md:flex-row items-center justify-center gap-4 w-full mt-4 md:mt-6 max-w-md'>
@@ -219,9 +297,11 @@ const Home = () => {
                       type='primary'
                       size={isMobile ? 'default' : 'large'}
                       className='!rounded-3xl px-8 py-2'
-                      icon={<IconPlay />}
+                      icon={
+                        <IconColorPlatte style={{ pointerEvents: 'none' }} />
+                      }
                     >
-                      {t('获取密钥')}
+                      {t('免费试用')}
                     </Button>
                   </Link>
                   {isDemoSiteMode && statusState?.status?.version ? (
@@ -239,16 +319,15 @@ const Home = () => {
                       {statusState.status.version}
                     </Button>
                   ) : (
-                    docsLink && (
+                    <Link to='/pricing'>
                       <Button
                         size={isMobile ? 'default' : 'large'}
                         className='flex items-center !rounded-3xl px-6 py-2'
-                        icon={<IconFile />}
-                        onClick={() => window.open(docsLink, '_blank')}
+                        icon={<IconTag style={{ pointerEvents: 'none' }} />}
                       >
-                        {t('文档')}
+                        {t('了解价格')}
                       </Button>
-                    )
+                    </Link>
                   )}
                 </div>
 
@@ -329,6 +408,33 @@ const Home = () => {
                       </Typography.Text>
                     </div>
                   </div>
+                </div>
+
+                <div className='mt-16 md:mt-20 lg:mt-24 w-full max-w-6xl mx-auto px-4'>
+                  <Row gutter={[24, 24]}>
+                    {featureCards.map((card) => {
+                      const IconComponent = card.icon;
+                      return (
+                        <Col key={card.key} xs={24} sm={8}>
+                          <div className='feature-card text-center p-6 rounded-xl bg-semi-color-bg-2 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1'>
+                            <IconComponent
+                              size='extra-large'
+                              className='mb-4 text-semi-color-primary'
+                            />
+                            <Typography.Title
+                              heading={4}
+                              className='mb-3 text-semi-color-text-0'
+                            >
+                              {card.title}
+                            </Typography.Title>
+                            <Typography.Text className='text-semi-color-text-1'>
+                              {card.description}
+                            </Typography.Text>
+                          </div>
+                        </Col>
+                      );
+                    })}
+                  </Row>
                 </div>
               </div>
             </div>

@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Typography, Tag } from '@douyinfe/semi-ui';
+import { Tag } from '@douyinfe/semi-ui';
 import SkeletonWrapper from '../components/SkeletonWrapper';
 
 const HeaderLogo = ({
@@ -38,7 +38,7 @@ const HeaderLogo = ({
   }
 
   return (
-    <Link to='/' className='group flex items-center gap-2'>
+    <Link to='/' className='group flex items-center gap-2 ml-2'>
       <div className='relative w-8 h-8 md:w-8 md:h-8'>
         <SkeletonWrapper loading={isLoading || !logoLoaded} type='image' />
         <img
@@ -55,12 +55,7 @@ const HeaderLogo = ({
             width={120}
             height={24}
           >
-            <Typography.Title
-              heading={4}
-              className='!text-lg !font-semibold !mb-0'
-            >
-              {systemName}
-            </Typography.Title>
+            <div className='sidebar-title'>{systemName}</div>
           </SkeletonWrapper>
           {(isSelfUseMode || isDemoSiteMode) && !isLoading && (
             <Tag

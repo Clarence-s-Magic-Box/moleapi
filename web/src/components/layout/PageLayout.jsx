@@ -43,7 +43,7 @@ const { Sider, Content, Header } = Layout;
 
 const PageLayout = () => {
   const [userState, userDispatch] = useContext(UserContext);
-  const [, statusDispatch] = useContext(StatusContext);
+  const [statusState, statusDispatch] = useContext(StatusContext);
   const isMobile = useIsMobile();
   const [collapsed, , setCollapsed] = useSidebarCollapsed();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -104,10 +104,6 @@ const PageLayout = () => {
   useEffect(() => {
     loadUser();
     loadStatus().catch(console.error);
-    let systemName = getSystemName();
-    if (systemName) {
-      document.title = systemName;
-    }
     let logo = getLogo();
     if (logo) {
       let linkElement = document.querySelector("link[rel~='icon']");
@@ -116,6 +112,91 @@ const PageLayout = () => {
       }
     }
   }, []);
+
+  useEffect(() => {
+    const systemName =
+      statusState?.status?.system_name || getSystemName() || 'MoleAPI';
+    const isChinese = i18n.language.startsWith('zh');
+    const routeMetaMap = {
+      '/': {
+        title: isChinese
+          ? `${systemName} 控制台 | 高速稳定的大模型服务入口`
+          : `${systemName} Console | Fast and Stable AI Model Access`,
+        description: isChinese
+          ? `${systemName} 是 MoleAPI 的控制台入口，提供高速、稳定的大模型服务接入体验，帮助团队统一连接 OpenAI、Anthropic、Google 等真实官方模型供应商。`
+          : `${systemName} is the MoleAPI console for fast, stable access to AI services from real official providers such as OpenAI, Anthropic, and Google.`,
+      },
+      '/pricing': {
+        title: isChinese
+          ? `${systemName} 价格与充值 | MoleAPI 控制台`
+          : `${systemName} Pricing and Top-up | MoleAPI Console`,
+        description: isChinese
+          ? '查看 MoleAPI 控制台的充值与价格信息，支持按实付金额开票，适合团队和开发者使用。'
+          : 'Review MoleAPI console pricing and top-up options with invoice-ready payments for teams and developers.',
+      },
+      '/about': {
+        title: isChinese
+          ? `关于 ${systemName} | MoleAPI 控制台`
+          : `About ${systemName} | MoleAPI Console`,
+        description: isChinese
+          ? `${systemName} 聚焦统一 API 网关、额度管理、账单与官方模型供应商接入能力。`
+          : `${systemName} focuses on unified API gateway access, quota management, billing, and official model provider connectivity.`,
+      },
+      '/login': {
+        title: isChinese
+          ? `${systemName} 登录 | MoleAPI 控制台`
+          : `${systemName} Login | MoleAPI Console`,
+        description: isChinese
+          ? `登录 ${systemName}，进入 MoleAPI 控制台管理模型调用、额度、账单与团队配置。`
+          : `Sign in to ${systemName} and manage model access, quotas, billing, and team settings in the MoleAPI console.`,
+      },
+      '/register': {
+        title: isChinese
+          ? `${systemName} 注册 | MoleAPI 控制台`
+          : `${systemName} Register | MoleAPI Console`,
+        description: isChinese
+          ? `注册 ${systemName}，体验高速、稳定的大模型服务接入与统一 API 管理。`
+          : `Create an account for ${systemName} and experience fast, stable AI model access with unified API management.`,
+      },
+    };
+    const fallbackMeta = {
+      title: isChinese
+        ? `${systemName} | MoleAPI 大模型控制台`
+        : `${systemName} | MoleAPI AI Model Console`,
+      description: isChinese
+        ? `${systemName} 提供高速、稳定的大模型服务接入体验，并连接真实官方模型供应商。`
+        : `${systemName} provides fast, stable access to AI models from real official providers.`,
+    };
+    const currentMeta = routeMetaMap[location.pathname] || fallbackMeta;
+    const canonicalUrl = `${window.location.origin}${location.pathname}`;
+
+    document.title = currentMeta.title;
+    document.documentElement.lang = i18n.language.startsWith('zh')
+      ? 'zh-CN'
+      : i18n.language;
+
+    const setMetaContent = (selector, content) => {
+      const element = document.querySelector(selector);
+      if (element && content) {
+        element.setAttribute('content', content);
+      }
+    };
+
+    setMetaContent('meta[name="description"]', currentMeta.description);
+    setMetaContent('meta[property="og:title"]', currentMeta.title);
+    setMetaContent('meta[property="og:description"]', currentMeta.description);
+    setMetaContent('meta[property="og:url"]', canonicalUrl);
+    setMetaContent('meta[name="twitter:title"]', currentMeta.title);
+    setMetaContent(
+      'meta[name="twitter:description"]',
+      currentMeta.description,
+    );
+
+    const canonicalLink = document.querySelector('link[rel="canonical"]');
+    if (canonicalLink) {
+      canonicalLink.setAttribute('href', canonicalUrl);
+    }
+  }, [i18n.language, location.pathname, statusState?.status?.system_name]);
 
   useEffect(() => {
     let preferredLang;

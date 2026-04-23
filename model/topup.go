@@ -3,18 +3,25 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
 type TopUp struct {
-	Id            int     `json:"id"`
-	UserId        int     `json:"user_id" gorm:"index"`
-	Amount        int64   `json:"amount"`
+	Id     int   `json:"id"`
+	UserId int   `json:"user_id" gorm:"index"`
+	Amount int64 `json:"amount"`
+	// AmountDisplay is a computed field for UI display:
+	// - pending/expired: base amount
+	// - success: includes current topup bonus rate
+	AmountDisplay string  `json:"amount_display" gorm:"-"`
 	Money         float64 `json:"money"`
 	TradeNo       string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod string  `json:"payment_method" gorm:"type:varchar(50)"`
@@ -35,6 +42,24 @@ var (
 	ErrTopUpNotFound         = errors.New("topup not found")
 	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
 )
+
+func (topUp *TopUp) FillAmountDisplay() {
+	if topUp == nil {
+		return
+	}
+	if topUp.Amount == 0 {
+		topUp.AmountDisplay = "0"
+		return
+	}
+	d := decimal.NewFromInt(topUp.Amount)
+	if topUp.Status == common.TopUpStatusSuccess {
+		bonusRate := operation_setting.GetTopupBonusRate(topUp.Amount)
+		d = d.Mul(decimal.NewFromFloat(1.0 + bonusRate))
+	}
+	s := d.StringFixed(2)
+	s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+	topUp.AmountDisplay = s
+}
 
 func (topUp *TopUp) Insert() error {
 	var err error
@@ -95,12 +120,67 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentMethod string, targ
 	})
 }
 
-func Recharge(referenceId string, customerId string, callerIp string) (err error) {
+func GenerateUniqueTopUpTradeNo(userId int) (string, error) {
+	if userId <= 0 {
+		return "", errors.New("invalid user id")
+	}
+	for i := 0; i < 8; i++ {
+		tradeNo := fmt.Sprintf("USR%dNO%s%s", userId, common.GetTimeString(), common.GetRandomString(4))
+		var count int64
+		if err := DB.Model(&TopUp{}).Where("trade_no = ?", tradeNo).Count(&count).Error; err != nil {
+			return "", err
+		}
+		if count == 0 {
+			return tradeNo, nil
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return "", errors.New("failed to generate unique topup trade no")
+}
+
+// FormatLanTuTradeNo builds an out_trade_no compatible with LanTu (ltzf) constraints:
+// - length: 6-32
+// - recommended: alphanumeric
+// We use a seconds timestamp (14 digits) plus a short random suffix to avoid collisions.
+func FormatLanTuTradeNo(userId int, t time.Time, suffix string) (string, error) {
+	if userId <= 0 {
+		return "", errors.New("invalid user id")
+	}
+	// Keep the legacy prefix so logs/search are familiar: USR{user}NO{time}{rand}
+	tradeNo := fmt.Sprintf("USR%06dNO%s%s", userId, t.UTC().Format("20060102150405"), suffix)
+	if l := len(tradeNo); l < 6 || l > 32 {
+		return "", errors.New("invalid lantu out_trade_no length")
+	}
+	return tradeNo, nil
+}
+
+func GenerateUniqueLanTuTradeNo(userId int) (string, error) {
+	if userId <= 0 {
+		return "", errors.New("invalid user id")
+	}
+	for i := 0; i < 8; i++ {
+		tradeNo, err := FormatLanTuTradeNo(userId, time.Now(), common.GetRandomString(4))
+		if err != nil {
+			return "", err
+		}
+		var count int64
+		if err := DB.Model(&TopUp{}).Where("trade_no = ?", tradeNo).Count(&count).Error; err != nil {
+			return "", err
+		}
+		if count == 0 {
+			return tradeNo, nil
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return "", errors.New("failed to generate unique lantu trade no")
+}
+
+func Recharge(referenceId string, customerId string, callerIp ...string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
 
-	var quota float64
+	var quotaToAdd int
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -129,8 +209,20 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 			return err
 		}
 
-		quota = topUp.Money * common.QuotaPerUnit
-		err = tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(map[string]interface{}{"stripe_customer": customerId, "quota": gorm.Expr("quota + ?", quota)}).Error
+		// Stripe 订单：Money 代表充值美元数量（可能已包含分组倍率换算）。
+		// 额外加赠：按 Amount 对应的加赠比例计算。
+		dBaseQuota := decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+		bonusRate := operation_setting.GetTopupBonusRate(topUp.Amount)
+		dFinalQuota := dBaseQuota.Mul(decimal.NewFromFloat(1.0 + bonusRate))
+		quotaToAdd = int(dFinalQuota.IntPart())
+		if quotaToAdd <= 0 {
+			return errors.New("无效的充值额度")
+		}
+
+		err = tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(map[string]interface{}{
+			"stripe_customer": customerId,
+			"quota":           gorm.Expr("quota + ?", quotaToAdd),
+		}).Error
 		if err != nil {
 			return err
 		}
@@ -143,17 +235,9 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		return errors.New("充值失败，请稍后重试")
 	}
 
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+	RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(quotaToAdd), topUp.Amount))
 
 	return nil
-}
-
-// topUpQueryWindowSeconds 限制充值记录查询的时间窗口（秒）。
-const topUpQueryWindowSeconds int64 = 30 * 24 * 60 * 60
-
-// topUpQueryCutoff 返回允许查询的最早 create_time（秒级 Unix 时间戳）。
-func topUpQueryCutoff() int64 {
-	return common.GetTimestamp() - topUpQueryWindowSeconds
 }
 
 func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
@@ -168,17 +252,15 @@ func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, tota
 		}
 	}()
 
-	cutoff := topUpQueryCutoff()
-
 	// Get total count within transaction
-	err = tx.Model(&TopUp{}).Where("user_id = ? AND create_time >= ?", userId, cutoff).Count(&total).Error
+	err = tx.Model(&TopUp{}).Where("user_id = ?", userId).Count(&total).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
 	// Get paginated topups within same transaction
-	err = tx.Where("user_id = ? AND create_time >= ?", userId, cutoff).Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error
+	err = tx.Where("user_id = ?", userId).Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -189,10 +271,13 @@ func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, tota
 		return nil, 0, err
 	}
 
+	for _, t := range topups {
+		t.FillAmountDisplay()
+	}
 	return topups, total, nil
 }
 
-// GetAllTopUps 获取全平台的充值记录（管理员使用，不限制时间窗口）
+// GetAllTopUps 获取全平台的充值记录（管理员使用）
 func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -218,12 +303,11 @@ func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err 
 		return nil, 0, err
 	}
 
+	for _, t := range topups {
+		t.FillAmountDisplay()
+	}
 	return topups, total, nil
 }
-
-// searchTopUpCountHardLimit 搜索充值记录时 COUNT 的安全上限，
-// 防止对超大表执行无界 COUNT 触发 DoS。
-const searchTopUpCountHardLimit = 10000
 
 // SearchUserTopUps 按订单号搜索某用户的充值记录
 func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
@@ -237,35 +321,32 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 		}
 	}()
 
-	query := tx.Model(&TopUp{}).Where("user_id = ? AND create_time >= ?", userId, topUpQueryCutoff())
+	query := tx.Model(&TopUp{}).Where("user_id = ?", userId)
 	if keyword != "" {
-		pattern, perr := sanitizeLikePattern(keyword)
-		if perr != nil {
-			tx.Rollback()
-			return nil, 0, perr
-		}
-		query = query.Where("trade_no LIKE ? ESCAPE '!'", pattern)
+		like := "%%" + keyword + "%%"
+		query = query.Where("trade_no LIKE ?", like)
 	}
 
-	if err = query.Limit(searchTopUpCountHardLimit).Count(&total).Error; err != nil {
+	if err = query.Count(&total).Error; err != nil {
 		tx.Rollback()
-		common.SysError("failed to count search topups: " + err.Error())
-		return nil, 0, errors.New("搜索充值记录失败")
+		return nil, 0, err
 	}
 
 	if err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
 		tx.Rollback()
-		common.SysError("failed to search topups: " + err.Error())
-		return nil, 0, errors.New("搜索充值记录失败")
+		return nil, 0, err
 	}
 
 	if err = tx.Commit().Error; err != nil {
 		return nil, 0, err
 	}
+	for _, t := range topups {
+		t.FillAmountDisplay()
+	}
 	return topups, total, nil
 }
 
-// SearchAllTopUps 按订单号搜索全平台充值记录（管理员使用，不限制时间窗口）
+// SearchAllTopUps 按订单号搜索全平台充值记录（管理员使用）
 func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -279,34 +360,31 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp
 
 	query := tx.Model(&TopUp{})
 	if keyword != "" {
-		pattern, perr := sanitizeLikePattern(keyword)
-		if perr != nil {
-			tx.Rollback()
-			return nil, 0, perr
-		}
-		query = query.Where("trade_no LIKE ? ESCAPE '!'", pattern)
+		like := "%%" + keyword + "%%"
+		query = query.Where("trade_no LIKE ?", like)
 	}
 
-	if err = query.Limit(searchTopUpCountHardLimit).Count(&total).Error; err != nil {
+	if err = query.Count(&total).Error; err != nil {
 		tx.Rollback()
-		common.SysError("failed to count search topups: " + err.Error())
-		return nil, 0, errors.New("搜索充值记录失败")
+		return nil, 0, err
 	}
 
 	if err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
 		tx.Rollback()
-		common.SysError("failed to search topups: " + err.Error())
-		return nil, 0, errors.New("搜索充值记录失败")
+		return nil, 0, err
 	}
 
 	if err = tx.Commit().Error; err != nil {
 		return nil, 0, err
 	}
+	for _, t := range topups {
+		t.FillAmountDisplay()
+	}
 	return topups, total, nil
 }
 
 // ManualCompleteTopUp 管理员手动完成订单并给用户充值
-func ManualCompleteTopUp(tradeNo string, callerIp string) error {
+func ManualCompleteTopUp(tradeNo string, callerIp ...string) error {
 	if tradeNo == "" {
 		return errors.New("未提供订单号")
 	}
@@ -319,7 +397,6 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	var userId int
 	var quotaToAdd int
 	var payMoney float64
-	var paymentMethod string
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
@@ -338,15 +415,18 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		}
 
 		// 计算应充值额度：
-		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
-		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
-		if topUp.PaymentMethod == PaymentMethodStripe {
+		// - Stripe 订单：Money 代表充值美元数量（可能已包含分组倍率换算）
+		// - 其他订单（如易支付）：Amount 为美元数量
+		// 额外加赠：按 Amount 对应的加赠比例计算。
+		bonusRate := operation_setting.GetTopupBonusRate(topUp.Amount)
+		dBonusMultiplier := decimal.NewFromFloat(1.0 + bonusRate)
+		if topUp.PaymentMethod == "stripe" {
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
+			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).Mul(dBonusMultiplier).IntPart())
 		} else {
 			dAmount := decimal.NewFromInt(topUp.Amount)
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
+			quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).Mul(dBonusMultiplier).IntPart())
 		}
 		if quotaToAdd <= 0 {
 			return errors.New("无效的充值额度")
@@ -366,7 +446,6 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 
 		userId = topUp.UserId
 		payMoney = topUp.Money
-		paymentMethod = topUp.PaymentMethod
 		return nil
 	})
 
@@ -375,10 +454,10 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	}
 
 	// 事务外记录日志，避免阻塞
-	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
+	RecordLog(userId, LogTypeTopup, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney))
 	return nil
 }
-func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {
+func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp ...string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -448,12 +527,12 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		return errors.New("充值失败，请稍后重试")
 	}
 
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodCreem)
+	RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money))
 
 	return nil
 }
 
-func RechargeWaffo(tradeNo string, callerIp string) (err error) {
+func RechargeWaffo(tradeNo string, callerIp ...string) (err error) {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -486,7 +565,9 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 
 		dAmount := decimal.NewFromInt(topUp.Amount)
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
+		bonusRate := operation_setting.GetTopupBonusRate(topUp.Amount)
+		dBonusMultiplier := decimal.NewFromFloat(1.0 + bonusRate)
+		quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).Mul(dBonusMultiplier).IntPart())
 		if quotaToAdd <= 0 {
 			return errors.New("无效的充值额度")
 		}
@@ -510,7 +591,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 	}
 
 	if quotaToAdd > 0 {
-		RecordTopupLog(topUp.UserId, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodWaffo)
+		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))
 	}
 
 	return nil
@@ -547,7 +628,11 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		quotaToAdd = int(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
+		dAmount := decimal.NewFromInt(topUp.Amount)
+		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+		bonusRate := operation_setting.GetTopupBonusRate(topUp.Amount)
+		dBonusMultiplier := decimal.NewFromFloat(1.0 + bonusRate)
+		quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).Mul(dBonusMultiplier).IntPart())
 		if quotaToAdd <= 0 {
 			return errors.New("无效的充值额度")
 		}

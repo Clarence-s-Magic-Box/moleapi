@@ -11,8 +11,13 @@ import (
 )
 
 var StartTime = time.Now().Unix() // unit: second
-var Version = "v0.0.0"            // this hard coding will be replaced automatically when building, no need to manually change
-var SystemName = "New API"
+var Version = "v0.9.11-dev1"      // this hard coding will be replaced automatically when building, no need to manually change
+// UpstreamVersion tracks the synced upstream new-api version for update checks and "Based on" display.
+var UpstreamVersion = "v0.12.15"
+
+// Commit is the build git commit SHA (typically short). It can be injected via ldflags or env.
+var Commit = ""
+var SystemName = "MoleAPI"
 var Footer = ""
 var Logo = ""
 var TopUpLink = ""
@@ -29,6 +34,9 @@ var DataExportEnabled = true
 var DataExportInterval = 5         // unit: minute
 var DataExportDefaultTime = "hour" // unit: minute
 var DefaultCollapseSidebar = false // default value of collapse sidebar
+var LantuMchId = ""
+var LantuSecretKey = ""
+var LantuApiUrl = ""
 
 // Any options with "Secret", "Token" in its key won't be return by GetOptions
 

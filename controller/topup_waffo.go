@@ -84,12 +84,7 @@ func getWaffoPayMoney(amount float64, group string) float64 {
 	if topupGroupRatio == 0 {
 		topupGroupRatio = 1
 	}
-	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
-		if ds > 0 {
-			discount = ds
-		}
-	}
+	discount := operation_setting.GetTopupDiscountMultiplier(int64(originalAmount))
 	return amount * setting.WaffoUnitPrice * topupGroupRatio * discount
 }
 

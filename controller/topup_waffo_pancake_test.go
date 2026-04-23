@@ -70,7 +70,8 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 			amount:           int64(common.QuotaPerUnit * 3),
 			group:            "vip",
 			quotaDisplayType: operation_setting.QuotaDisplayTypeTokens,
-			expected:         4.5,
+			// 0.5 is treated as legacy bonus-style value, so no discount is applied.
+			expected:         9,
 		},
 		{
 			name:             "non-positive discount falls back to no discount",

@@ -1,11 +1,11 @@
 package helper
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
+	commonutil "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -24,12 +24,17 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 	if isResponsesCompact && strings.HasSuffix(originModelName, ratio_setting.CompactModelSuffix) {
 		mappingModelName = strings.TrimSuffix(originModelName, ratio_setting.CompactModelSuffix)
 	}
+	if redirectedModelName, redirected := commonutil.GetSystemRedirectedModelName(mappingModelName); redirected {
+		mappingModelName = redirectedModelName
+		info.UpstreamModelName = redirectedModelName
+		info.IsModelMapped = true
+	}
 
 	// map model name
 	modelMapping := c.GetString("model_mapping")
 	if modelMapping != "" && modelMapping != "{}" {
 		modelMap := make(map[string]string)
-		err := json.Unmarshal([]byte(modelMapping), &modelMap)
+		err := commonutil.UnmarshalJsonStr(modelMapping, &modelMap)
 		if err != nil {
 			return fmt.Errorf("unmarshal_model_mapping_failed")
 		}

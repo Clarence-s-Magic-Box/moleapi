@@ -23,17 +23,9 @@ var completionRatioMetaOptionKeys = []string{
 	"CacheRatio",
 	"CreateCacheRatio",
 	"ImageRatio",
+	"ImageOutputRatio",
 	"AudioRatio",
 	"AudioCompletionRatio",
-}
-
-func isVisiblePublicKeyOption(key string) bool {
-	switch key {
-	case "WaffoPancakeWebhookPublicKey", "WaffoPancakeWebhookTestKey":
-		return true
-	default:
-		return false
-	}
 }
 
 func collectModelNamesFromOptionValue(raw string, modelNames map[string]struct{}) {
@@ -75,12 +67,11 @@ func GetOptions(c *gin.Context) {
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
 		value := common.Interface2String(v)
-		isSensitiveKey := strings.HasSuffix(k, "Token") ||
+		if strings.HasSuffix(k, "Token") ||
 			strings.HasSuffix(k, "Secret") ||
 			strings.HasSuffix(k, "Key") ||
 			strings.HasSuffix(k, "secret") ||
-			strings.HasSuffix(k, "api_key")
-		if isSensitiveKey && !isVisiblePublicKeyOption(k) {
+			strings.HasSuffix(k, "api_key") {
 			continue
 		}
 		options = append(options, &model.Option{
@@ -213,6 +204,15 @@ func UpdateOption(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "图片倍率设置失败: " + err.Error(),
+			})
+			return
+		}
+	case "ImageOutputRatio":
+		err = ratio_setting.UpdateImageOutputRatioByJSONString(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "图片输出倍率设置失败: " + err.Error(),
 			})
 			return
 		}

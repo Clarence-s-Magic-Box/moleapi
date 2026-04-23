@@ -24,6 +24,13 @@ import { CreditCard } from 'lucide-react';
 
 const { Text } = Typography;
 
+const getPayMethodDisplayName = (payMethod, t) => {
+  if (payMethod?.type === 'lantu') {
+    return t('微信支付');
+  }
+  return payMethod?.name || '';
+};
+
 const PaymentConfirmModal = ({
   t,
   open,
@@ -31,19 +38,26 @@ const PaymentConfirmModal = ({
   handleCancel,
   confirmLoading,
   topUpCount,
-  renderQuotaWithAmount,
+  renderQuota,
   amountLoading,
   renderAmount,
   payWay,
   payMethods,
-  // 新增：用于显示折扣明细
-  amountNumber,
-  discountRate,
+  // 加赠明细（按 0.8.1 的 tokens 展示口径）
+  bonusRate,
+  groupRatio = 1,
 }) => {
-  const hasDiscount =
-    discountRate && discountRate > 0 && discountRate < 1 && amountNumber > 0;
-  const originalAmount = hasDiscount ? amountNumber / discountRate : 0;
-  const discountAmount = hasDiscount ? originalAmount - amountNumber : 0;
+  const hasBonus = bonusRate && bonusRate > 0;
+  const normalizedGroupRatio =
+    Number.isFinite(Number(groupRatio)) && Number(groupRatio) > 0
+      ? Number(groupRatio)
+      : 1;
+  const baseQuota = topUpCount * 500000 * normalizedGroupRatio;
+  const extraQuota = hasBonus ? baseQuota * bonusRate : 0;
+  const totalQuota = baseQuota + extraQuota;
+  const bonusText = hasBonus
+    ? `${t('加赠')}${Math.round(bonusRate * 100)}%`
+    : t('无加赠');
   return (
     <Modal
       title={
@@ -68,7 +82,32 @@ const PaymentConfirmModal = ({
                 {t('充值数量')}：
               </Text>
               <Text className='text-slate-900 dark:text-slate-100'>
-                {renderQuotaWithAmount(topUpCount)}
+                ${topUpCount}
+              </Text>
+            </div>
+            <div className='flex justify-between items-center'>
+              <Text strong className='text-slate-700 dark:text-slate-200'>
+                {t('基础额度')}：
+              </Text>
+              <Text className='text-slate-900 dark:text-slate-100'>
+                {renderQuota ? renderQuota(baseQuota) : baseQuota}
+              </Text>
+            </div>
+            <div className='flex justify-between items-center'>
+              <Text strong className='text-slate-700 dark:text-slate-200'>
+                {t('加赠额度')}：
+              </Text>
+              <Text className='text-emerald-600 dark:text-emerald-400'>
+                {renderQuota ? renderQuota(extraQuota) : extraQuota}
+                <span className='ml-1 text-xs'>({bonusText})</span>
+              </Text>
+            </div>
+            <div className='flex justify-between items-center pt-2 border-t border-slate-200/70 dark:border-slate-700/70'>
+              <Text strong className='text-slate-700 dark:text-slate-200'>
+                {t('总计额度')}：
+              </Text>
+              <Text strong className='text-slate-900 dark:text-slate-100'>
+                {renderQuota ? renderQuota(totalQuota) : totalQuota}
               </Text>
             </div>
             <div className='flex justify-between items-center'>
@@ -78,38 +117,11 @@ const PaymentConfirmModal = ({
               {amountLoading ? (
                 <Skeleton.Title style={{ width: '60px', height: '16px' }} />
               ) : (
-                <div className='flex items-baseline space-x-2'>
-                  <Text strong className='font-bold' style={{ color: 'red' }}>
-                    {renderAmount()}
-                  </Text>
-                  {hasDiscount && (
-                    <Text size='small' className='text-rose-500'>
-                      {Math.round(discountRate * 100)}%
-                    </Text>
-                  )}
-                </div>
+                <Text type='danger' strong>
+                  {renderAmount()}
+                </Text>
               )}
             </div>
-            {hasDiscount && !amountLoading && (
-              <>
-                <div className='flex justify-between items-center'>
-                  <Text className='text-slate-500 dark:text-slate-400'>
-                    {t('原价')}：
-                  </Text>
-                  <Text delete className='text-slate-500 dark:text-slate-400'>
-                    {`${originalAmount.toFixed(2)} ${t('元')}`}
-                  </Text>
-                </div>
-                <div className='flex justify-between items-center'>
-                  <Text className='text-slate-500 dark:text-slate-400'>
-                    {t('优惠')}：
-                  </Text>
-                  <Text className='text-emerald-600 dark:text-emerald-400'>
-                    {`- ${discountAmount.toFixed(2)} ${t('元')}`}
-                  </Text>
-                </div>
-              </>
-            )}
             <div className='flex justify-between items-center'>
               <Text strong className='text-slate-700 dark:text-slate-200'>
                 {t('支付方式')}：
@@ -134,22 +146,17 @@ const PaymentConfirmModal = ({
                             size={16}
                             color='#07C160'
                           />
+                        ) : payMethod.type === 'lantu' ? (
+                          <SiWechat
+                            className='mr-2'
+                            size={16}
+                            color='#07C160'
+                          />
                         ) : payMethod.type === 'stripe' ? (
                           <SiStripe
                             className='mr-2'
                             size={16}
                             color='#635BFF'
-                          />
-                        ) : payMethod.icon ? (
-                          <img
-                            src={payMethod.icon}
-                            alt={payMethod.name}
-                            className='mr-2'
-                            style={{
-                              width: 16,
-                              height: 16,
-                              objectFit: 'contain',
-                            }}
                           />
                         ) : (
                           <CreditCard
@@ -161,7 +168,7 @@ const PaymentConfirmModal = ({
                           />
                         )}
                         <Text className='text-slate-900 dark:text-slate-100'>
-                          {payMethod.name}
+                          {getPayMethodDisplayName(payMethod, t)}
                         </Text>
                       </>
                     );
