@@ -20,14 +20,16 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useState, useMemo, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Typography } from '@douyinfe/semi-ui';
-import { getFooterHTML, getSystemName } from '../../helpers';
+import { getDisplaySiteName, getFooterHTML, getSystemName } from '../../helpers';
 import { StatusContext } from '../../context/Status';
 
 const FooterBar = () => {
   const { t } = useTranslation();
   const [footer, setFooter] = useState(getFooterHTML());
-  const systemName = getSystemName();
   const [statusState] = useContext(StatusContext);
+  const systemName = getDisplaySiteName(
+    statusState?.status?.system_name || getSystemName(),
+  );
   const upstreamVersion =
     statusState?.status?.upstream_version || statusState?.status?.version || '';
   const projectVersion = statusState?.status?.project_version || '';

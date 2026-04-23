@@ -827,6 +827,8 @@
     "复制全部": "Tout copier",
     "复制名称": "Copier le nom",
     "复制失败": "Échec de la copie",
+    "复制密钥": "Copier la clé",
+    "复制连接信息": "Copier les informations de connexion",
     "复制失败，请手动复制": "Échec de la copie, veuillez copier manuellement",
     "复制失败，请手动选择文本复制": "Copy failed, please manually select and copy the text",
     "复制已选": "Copier la sélection",

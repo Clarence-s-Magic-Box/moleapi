@@ -352,6 +352,7 @@ const renderQuotaUsage = (text, record, t) => {
 const renderOperations = (
   text,
   record,
+  copyTokenKey,
   onOpenLink,
   setEditingToken,
   setShowEdit,
@@ -383,6 +384,16 @@ const renderOperations = (
 
   return (
     <Space wrap>
+      <Button
+        size='small'
+        type='tertiary'
+        onClick={async () => {
+          await copyTokenKey(record);
+        }}
+      >
+        {t('复制')}
+      </Button>
+
       <SplitButtonGroup
         className='overflow-hidden'
         aria-label={t('项目操作按钮组')}
@@ -562,6 +573,7 @@ export const getTokensColumns = ({
         renderOperations(
           text,
           record,
+          copyTokenKey,
           onOpenLink,
           setEditingToken,
           setShowEdit,

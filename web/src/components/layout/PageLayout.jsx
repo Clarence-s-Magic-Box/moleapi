@@ -30,6 +30,7 @@ import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useTranslation } from 'react-i18next';
 import {
   API,
+  getDisplaySiteName,
   getLogo,
   getSystemName,
   showError,
@@ -114,8 +115,9 @@ const PageLayout = () => {
   }, []);
 
   useEffect(() => {
-    const systemName =
-      statusState?.status?.system_name || getSystemName() || 'MoleAPI';
+    const systemName = getDisplaySiteName(
+      statusState?.status?.system_name || getSystemName(),
+    );
     const isChinese = i18n.language.startsWith('zh');
     const routeMetaMap = {
       '/': {

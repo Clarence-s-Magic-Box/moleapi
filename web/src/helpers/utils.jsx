@@ -52,6 +52,18 @@ export function getSystemName() {
   return system_name;
 }
 
+export function getDisplaySiteName(systemName, fallback = 'MoleAPI') {
+  const normalizedName =
+    typeof systemName === 'string' ? systemName.trim() : '';
+  if (!normalizedName) {
+    return fallback;
+  }
+  if (normalizedName === 'TEST' || normalizedName === 'New API') {
+    return fallback;
+  }
+  return normalizedName;
+}
+
 export function getLogo() {
   let logo = localStorage.getItem('logo');
   if (!logo) return '/logo.png';

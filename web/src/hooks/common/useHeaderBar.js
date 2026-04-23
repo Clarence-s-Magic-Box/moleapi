@@ -23,7 +23,13 @@ import { useTranslation } from 'react-i18next';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useSetTheme, useTheme, useActualTheme } from '../../context/Theme';
-import { getLogo, getSystemName, API, showSuccess } from '../../helpers';
+import {
+  getDisplaySiteName,
+  getLogo,
+  getSystemName,
+  API,
+  showSuccess,
+} from '../../helpers';
 import { normalizeLanguage } from '../../i18n/language';
 import { useIsMobile } from './useIsMobile';
 import { useSidebarCollapsed } from './useSidebarCollapsed';
@@ -43,7 +49,9 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
   const loading = statusState?.status === undefined;
   const isLoading = useMinimumLoadingTime(loading, 200);
 
-  const systemName = getSystemName();
+  const systemName = getDisplaySiteName(
+    statusState?.status?.system_name || getSystemName(),
+  );
   const logo = getLogo();
   const currentDate = new Date();
   const isNewYear = currentDate.getMonth() === 0 && currentDate.getDate() === 1;

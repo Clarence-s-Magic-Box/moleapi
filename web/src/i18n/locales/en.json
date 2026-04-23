@@ -821,6 +821,8 @@
     "复制全部": "Copy all",
     "复制名称": "Copy name",
     "复制失败": "Copy failed",
+    "复制密钥": "Copy Key",
+    "复制连接信息": "Copy Connection Info",
     "复制失败，请手动复制": "Copy failed, please copy manually",
     "复制失败，请手动选择文本复制": "Copy failed, please manually select and copy the text",
     "复制已选": "Copy selected",
