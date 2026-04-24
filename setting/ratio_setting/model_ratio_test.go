@@ -9,6 +9,16 @@ func TestGetHardcodedCompletionModelRatioGpt54(t *testing.T) {
 		expected float64
 	}{
 		{
+			name:     "gpt-5.5 uses official output multiplier",
+			model:    "gpt-5.5",
+			expected: 6,
+		},
+		{
+			name:     "gpt-5.5 dated variant uses official output multiplier",
+			model:    "gpt-5.5-2026-04-24",
+			expected: 6,
+		},
+		{
 			name:     "gpt-5.4 uses dedicated ratio",
 			model:    "gpt-5.4",
 			expected: 6,
@@ -30,5 +40,16 @@ func TestGetHardcodedCompletionModelRatioGpt54(t *testing.T) {
 				t.Fatalf("unexpected ratio for %s: got %v want %v", tc.model, got, tc.expected)
 			}
 		})
+	}
+}
+
+func TestGetCompletionRatioInfoGPT55UsesOfficialOutputMultiplier(t *testing.T) {
+	info := GetCompletionRatioInfo("gpt-5.5")
+
+	if info.Ratio != 6 {
+		t.Fatalf("gpt-5.5 completion ratio = %v, want 6", info.Ratio)
+	}
+	if !info.Locked {
+		t.Fatal("gpt-5.5 completion ratio should be locked to the official multiplier")
 	}
 }
