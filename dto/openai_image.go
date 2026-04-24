@@ -26,8 +26,8 @@ type ImageRequest struct {
 	OutputFormat      json.RawMessage `json:"output_format,omitempty"`
 	OutputCompression json.RawMessage `json:"output_compression,omitempty"`
 	PartialImages     json.RawMessage `json:"partial_images,omitempty"`
-	// Stream            bool            `json:"stream,omitempty"`
-	Watermark *bool `json:"watermark,omitempty"`
+	Stream            *bool           `json:"stream,omitempty"`
+	Watermark         *bool           `json:"watermark,omitempty"`
 	// zhipu 4v
 	WatermarkEnabled json.RawMessage `json:"watermark_enabled,omitempty"`
 	UserId           json.RawMessage `json:"user_id,omitempty"`
@@ -160,7 +160,7 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 }
 
 func (i *ImageRequest) IsStream(c *gin.Context) bool {
-	return false
+	return i.Stream != nil && *i.Stream
 }
 
 func (i *ImageRequest) SetModelName(modelName string) {
@@ -170,12 +170,29 @@ func (i *ImageRequest) SetModelName(modelName string) {
 }
 
 type ImageResponse struct {
-	Data     []ImageData     `json:"data"`
-	Created  int64           `json:"created"`
-	Metadata json.RawMessage `json:"metadata,omitempty"`
+	Data         []ImageData     `json:"data"`
+	Created      int64           `json:"created"`
+	Metadata     json.RawMessage `json:"metadata,omitempty"`
+	Background   string          `json:"background,omitempty"`
+	OutputFormat string          `json:"output_format,omitempty"`
+	Quality      string          `json:"quality,omitempty"`
+	Size         string          `json:"size,omitempty"`
+	Usage        *Usage          `json:"usage,omitempty"`
 }
 type ImageData struct {
 	Url           string `json:"url"`
 	B64Json       string `json:"b64_json"`
 	RevisedPrompt string `json:"revised_prompt"`
+}
+
+type ImageStreamEvent struct {
+	Type              string `json:"type"`
+	B64Json           string `json:"b64_json,omitempty"`
+	Background        string `json:"background,omitempty"`
+	CreatedAt         int64  `json:"created_at,omitempty"`
+	OutputFormat      string `json:"output_format,omitempty"`
+	PartialImageIndex *int   `json:"partial_image_index,omitempty"`
+	Quality           string `json:"quality,omitempty"`
+	Size              string `json:"size,omitempty"`
+	Usage             *Usage `json:"usage,omitempty"`
 }

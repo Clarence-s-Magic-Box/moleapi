@@ -65,6 +65,7 @@ var ModelList = []string{
 	"text-davinci-edit-001",
 	"davinci-002", "babbage-002",
 	"dall-e-2", "dall-e-3",
+	"gpt-image-2", "gpt-image-2-2026-04-21",
 	"gpt-image-1", "gpt-image-1-mini", "gpt-image-1.5",
 	"chatgpt-image-latest",
 	"whisper-1",
