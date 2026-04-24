@@ -1757,6 +1757,7 @@
     "用以支持通过微信进行登录注册": "Pour prendre en charge la connexion & l'inscription via WeChat",
     "用以防止恶意用户利用临时邮箱批量注册": "Pour empêcher les utilisateurs malveillants d'utiliser des e-mails temporaires pour s'inscrire en masse",
     "用户": "Utilisateurs",
+    "用户ID": "ID utilisateur",
     "用户个人功能": "Fonctions personnelles de l'utilisateur",
     "用户主页，展示系统信息": "Page d'accueil de l'utilisateur, affichant les informations système",
     "用户优先：如果用户在请求中指定了系统提示词，将优先使用用户的设置": "Priorité de l'utilisateur : si l'utilisateur spécifie une invite système dans la requête, le paramètre de l'utilisateur sera utilisé en premier",
