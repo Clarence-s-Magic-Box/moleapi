@@ -2,7 +2,7 @@ package ratio_setting
 
 import "testing"
 
-func TestGetHardcodedCompletionModelRatioGpt54(t *testing.T) {
+func TestGetHardcodedCompletionModelRatioGpt5(t *testing.T) {
 	tests := []struct {
 		name     string
 		model    string
@@ -51,5 +51,13 @@ func TestGetCompletionRatioInfoGPT55UsesOfficialOutputMultiplier(t *testing.T) {
 	}
 	if !info.Locked {
 		t.Fatal("gpt-5.5 completion ratio should be locked to the official multiplier")
+	}
+}
+
+func TestGetCompletionRatioGPT55DatedVariant(t *testing.T) {
+	got := GetCompletionRatio("gpt-5.5-2026-04-24")
+
+	if got != 6 {
+		t.Fatalf("gpt-5.5 dated variant completion ratio = %v, want 6", got)
 	}
 }
