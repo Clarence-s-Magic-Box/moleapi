@@ -35,6 +35,7 @@ import { Button, Tooltip, Toast } from '@douyinfe/semi-ui';
 import { copy, rehypeSplitWordsIntoSpans } from '../../../helpers';
 import { IconCopy } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
+import { markdownUrlTransform } from './urlTransform';
 
 mermaid.initialize({
   startOnLoad: false,
@@ -414,6 +415,7 @@ function _MarkdownContent(props) {
     <ReactMarkdown
       remarkPlugins={[RemarkMath, RemarkGfm, RemarkBreaks]}
       rehypePlugins={rehypePluginsBase}
+      urlTransform={markdownUrlTransform}
       components={{
         pre: PreCode,
         code: CustomCode,
