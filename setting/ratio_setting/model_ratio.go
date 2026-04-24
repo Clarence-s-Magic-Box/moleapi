@@ -58,6 +58,8 @@ var defaultModelRatio = map[string]float64{
 	"gpt-4.1-mini-2025-04-14":          0.2,  // $0.4 / 1M tokens
 	"gpt-4.1-nano":                     0.05, // $0.1 / 1M tokens
 	"gpt-4.1-nano-2025-04-14":          0.05, // $0.1 / 1M tokens
+	"gpt-image-2":                      2.5,  // $5 / 1M text input tokens
+	"gpt-image-2-2026-04-21":           2.5,  // $5 / 1M text input tokens
 	"gpt-image-1":                      2.5,  // $5 / 1M tokens
 	"o1":                               7.5,  // $15 / 1M tokens
 	"o1-2024-12-17":                    7.5,  // $15 / 1M tokens
@@ -332,6 +334,8 @@ var defaultCompletionRatio = map[string]float64{
 	"gpt-4-gizmo-*":                  2,
 	"gpt-4o-gizmo-*":                 3,
 	"gpt-4-all":                      2,
+	"gpt-image-2":                    6,
+	"gpt-image-2-2026-04-21":         6,
 	"gpt-image-1":                    8,
 	"gemini-3.1-flash-image-preview": 6,
 	"gemini-3-pro-image-preview":     6,
@@ -658,6 +662,8 @@ func ModelRatio2JSONString() string {
 }
 
 var defaultImageRatio = map[string]float64{
+	"gpt-image-2":                    1.6,
+	"gpt-image-2-2026-04-21":         1.6,
 	"gpt-image-1":                    2,
 	"gemini-3.1-flash-image-preview": 1,
 	"gemini-3-pro-image-preview":     1,

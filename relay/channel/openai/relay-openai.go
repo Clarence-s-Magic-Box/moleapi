@@ -192,6 +192,36 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	return usage, nil
 }
 
+func OaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	if resp == nil || resp.Body == nil {
+		logger.LogError(c, "invalid response or response body")
+		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
+	}
+
+	usage := &dto.Usage{}
+	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		var event dto.ImageStreamEvent
+		if err := common.UnmarshalJsonStr(data, &event); err != nil {
+			logger.LogError(c, "failed to unmarshal image stream event: "+err.Error())
+			sr.Error(err)
+			return
+		}
+		if err := helper.StringData(c, data); err != nil {
+			sr.Stop(err)
+			return
+		}
+		if event.Type == "image_generation.completed" {
+			usage = service.ImageUsageToUsage(event.Usage, info.GetEstimatePromptTokens())
+		}
+	})
+	helper.Done(c)
+
+	if usage.TotalTokens == 0 {
+		usage = service.ImageUsageToUsage(nil, info.GetEstimatePromptTokens())
+	}
+	return usage, nil
+}
+
 func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	defer service.CloseResponseBodyGracefully(resp)
 

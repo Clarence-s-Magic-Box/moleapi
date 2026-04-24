@@ -337,16 +337,20 @@ type IncompleteDetails struct {
 }
 
 type ResponsesOutput struct {
-	Type      string                   `json:"type"`
-	ID        string                   `json:"id"`
-	Status    string                   `json:"status"`
-	Role      string                   `json:"role"`
-	Content   []ResponsesOutputContent `json:"content"`
-	Quality   string                   `json:"quality"`
-	Size      string                   `json:"size"`
-	CallId    string                   `json:"call_id,omitempty"`
-	Name      string                   `json:"name,omitempty"`
-	Arguments string                   `json:"arguments,omitempty"`
+	Type          string                   `json:"type"`
+	ID            string                   `json:"id"`
+	Status        string                   `json:"status"`
+	Role          string                   `json:"role"`
+	Content       []ResponsesOutputContent `json:"content"`
+	Result        string                   `json:"result,omitempty"`
+	RevisedPrompt string                   `json:"revised_prompt,omitempty"`
+	Quality       string                   `json:"quality"`
+	Size          string                   `json:"size"`
+	Background    string                   `json:"background,omitempty"`
+	OutputFormat  string                   `json:"output_format,omitempty"`
+	CallId        string                   `json:"call_id,omitempty"`
+	Name          string                   `json:"name,omitempty"`
+	Arguments     string                   `json:"arguments,omitempty"`
 }
 
 type ResponsesOutputContent struct {
@@ -363,6 +367,7 @@ type ResponsesReasoningSummaryPart struct {
 const (
 	BuildInToolWebSearchPreview = "web_search_preview"
 	BuildInToolFileSearch       = "file_search"
+	BuildInToolImageGeneration  = "image_generation"
 )
 
 const (
@@ -376,10 +381,12 @@ const (
 
 // ResponsesStreamResponse 用于处理 /v1/responses 流式响应
 type ResponsesStreamResponse struct {
-	Type     string                   `json:"type"`
-	Response *OpenAIResponsesResponse `json:"response,omitempty"`
-	Delta    string                   `json:"delta,omitempty"`
-	Item     *ResponsesOutput         `json:"item,omitempty"`
+	Type              string                   `json:"type"`
+	Response          *OpenAIResponsesResponse `json:"response,omitempty"`
+	Delta             string                   `json:"delta,omitempty"`
+	Item              *ResponsesOutput         `json:"item,omitempty"`
+	PartialImageB64   string                   `json:"partial_image_b64,omitempty"`
+	PartialImageIndex *int                     `json:"partial_image_index,omitempty"`
 	// - response.function_call_arguments.delta
 	// - response.function_call_arguments.done
 	OutputIndex  *int                           `json:"output_index,omitempty"`

@@ -316,6 +316,12 @@ pre:hover .copy-code-button {
   margin: 12px 0;
 }
 
+.markdown-body img[src^='data:image/'] {
+  display: block;
+  max-height: min(70vh, 720px);
+  object-fit: contain;
+}
+
 /* 内联代码样式 */
 .markdown-body code:not(pre code) {
   background-color: var(--semi-color-fill-1);
