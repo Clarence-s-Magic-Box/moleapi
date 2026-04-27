@@ -1,8 +1,10 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 )
 
@@ -55,6 +57,51 @@ func TestChatCompletionsRequestToImageRequest(t *testing.T) {
 	}
 }
 
+func TestChatCompletionsRequestToImageRequestStripsGeneratedImagePayloads(t *testing.T) {
+	generatedImage := "![generated image](data:image/png;base64," + strings.Repeat("a", 12000) + ")"
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-image-2",
+		Messages: []dto.Message{
+			{Role: "system", Content: "Use a clean editorial style."},
+			{Role: "assistant", Content: generatedImage},
+			{Role: "user", Content: "Make the next image use a blue background."},
+		},
+	}
+
+	imageReq, err := ChatCompletionsRequestToImageRequest(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Contains(imageReq.Prompt, "data:image") || strings.Contains(imageReq.Prompt, "base64") {
+		t.Fatalf("prompt should not contain generated image payload: %q", imageReq.Prompt)
+	}
+	if !strings.Contains(imageReq.Prompt, "Use a clean editorial style.") || !strings.Contains(imageReq.Prompt, "Make the next image use a blue background.") {
+		t.Fatalf("prompt should retain useful text: %q", imageReq.Prompt)
+	}
+}
+
+func TestImageCompatTokenCountMetaUsesConvertedPromptOnly(t *testing.T) {
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-image-2",
+		Messages: []dto.Message{
+			{Role: "assistant", Content: "data:image/webp;base64," + strings.Repeat("b", 10000)},
+			{Role: "user", Content: "Draw a small red cube."},
+		},
+	}
+
+	meta, ok := ImageCompatTokenCountMeta(req, "gpt-image-2")
+	if !ok {
+		t.Fatal("expected image compatibility token meta")
+	}
+	if strings.Contains(meta.CombineText, "data:image") || strings.Contains(meta.CombineText, strings.Repeat("b", 100)) {
+		t.Fatalf("token meta should not contain generated image payload: %q", meta.CombineText)
+	}
+	if meta.CombineText != "Draw a small red cube." {
+		t.Fatalf("unexpected token meta text: %q", meta.CombineText)
+	}
+}
+
 func TestResponsesRequestToImageRequest(t *testing.T) {
 	stream := true
 	req := &dto.OpenAIResponsesRequest{
@@ -86,6 +133,30 @@ func TestResponsesRequestToImageRequest(t *testing.T) {
 	}
 }
 
+func TestApplyImageOptionsFromRawPreservesApimartFields(t *testing.T) {
+	imageReq := &dto.ImageRequest{}
+	ApplyImageOptionsFromRaw([]byte(`{"resolution":"2k","image_urls":["https://example.com/ref.png"],"official_fallback":false}`), imageReq)
+
+	if string(imageReq.Resolution) != `"2k"` {
+		t.Fatalf("unexpected resolution: %s", string(imageReq.Resolution))
+	}
+	if !strings.Contains(string(imageReq.ImageUrls), "https://example.com/ref.png") {
+		t.Fatalf("unexpected image_urls: %s", string(imageReq.ImageUrls))
+	}
+	if imageReq.OfficialFallback == nil || *imageReq.OfficialFallback {
+		t.Fatalf("expected explicit false official_fallback, got %v", imageReq.OfficialFallback)
+	}
+	body, err := common.Marshal(imageReq)
+	if err != nil {
+		t.Fatalf("marshal image request: %v", err)
+	}
+	for _, want := range []string{`"resolution":"2k"`, `"image_urls":["https://example.com/ref.png"]`, `"official_fallback":false`} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("expected %s in marshaled request, got %s", want, string(body))
+		}
+	}
+}
+
 func TestImageResponseToChatResponse(t *testing.T) {
 	resp := &dto.ImageResponse{
 		Created:      123,
@@ -110,6 +181,69 @@ func TestImageResponseToChatResponse(t *testing.T) {
 	}
 	if usage.TotalTokens != 12 || chatResp.Usage.TotalTokens != 12 {
 		t.Fatalf("unexpected usage: %+v / %+v", usage, chatResp.Usage)
+	}
+}
+
+func TestImageResponseToChatResponseIncludesAllImages(t *testing.T) {
+	resp := &dto.ImageResponse{
+		Created:      123,
+		OutputFormat: "png",
+		Data: []dto.ImageData{
+			{Url: "https://example.com/a.png"},
+			{Url: "https://example.com/b.png"},
+		},
+		Usage: &dto.Usage{PromptTokens: 5, CompletionTokens: 7, TotalTokens: 12},
+	}
+
+	chatResp, _, err := ImageResponseToChatResponse(resp, "gpt-image-2", "chatcmpl_test", 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, ok := chatResp.Choices[0].Message.Content.(string)
+	if !ok {
+		t.Fatalf("expected string content, got %T", chatResp.Choices[0].Message.Content)
+	}
+	if !strings.Contains(content, "https://example.com/a.png") || !strings.Contains(content, "https://example.com/b.png") {
+		t.Fatalf("expected both images in chat content, got %q", content)
+	}
+}
+
+func TestImageResponseToResponsesResponseIncludesAllImages(t *testing.T) {
+	resp := &dto.ImageResponse{
+		Created: 123,
+		Data: []dto.ImageData{
+			{Url: "https://example.com/a.png"},
+			{Url: "https://example.com/b.png"},
+		},
+		Usage: &dto.Usage{PromptTokens: 5, CompletionTokens: 7, TotalTokens: 12},
+	}
+
+	response, _, err := ImageResponseToResponsesResponse(resp, "gpt-image-2", "resp_test", "igc_test", 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output, ok := response["output"].([]map[string]any)
+	if !ok || len(output) != 2 {
+		t.Fatalf("expected two output items, got %#v", response["output"])
+	}
+	if output[0]["result"] != "https://example.com/a.png" || output[1]["result"] != "https://example.com/b.png" {
+		t.Fatalf("unexpected output items: %#v", output)
+	}
+}
+
+func TestImageDataCountIgnoresEmptyItems(t *testing.T) {
+	resp := &dto.ImageResponse{
+		Data: []dto.ImageData{
+			{},
+			{Url: "https://example.com/a.png"},
+			{B64Json: "abc123"},
+		},
+	}
+
+	if got := ImageDataCount(resp); got != 2 {
+		t.Fatalf("expected 2 images, got %d", got)
 	}
 }
 
