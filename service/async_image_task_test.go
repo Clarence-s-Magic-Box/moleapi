@@ -49,6 +49,38 @@ func TestResolveAsyncImageTaskResponseCompleted(t *testing.T) {
 	}
 }
 
+func TestResolveAsyncImageTaskResponseUsesTaskEndpointForImageEditBaseURL(t *testing.T) {
+	var sawTaskPath bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/tasks/task_123" {
+			t.Fatalf("unexpected task path: %s", r.URL.Path)
+		}
+		sawTaskPath = true
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":200,"data":{"id":"task_123","status":"completed","created":10,"completed":20,"result":{"images":[{"url":["https://example.com/edit.png"],"expires_at":30}]}}}`))
+	}))
+	defer server.Close()
+
+	imageResp, _, ok, err := ResolveAsyncImageTaskResponse(context.Background(), []byte(`{"code":200,"data":[{"status":"submitted","task_id":"task_123"}]}`), AsyncImageTaskPollOptions{
+		BaseURL:    server.URL + "/v1/images/edits",
+		HTTPClient: server.Client(),
+		Interval:   time.Millisecond,
+		Timeout:    time.Second,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected async task response to be detected")
+	}
+	if !sawTaskPath {
+		t.Fatal("expected task polling endpoint to be called")
+	}
+	if len(imageResp.Data) != 1 || imageResp.Data[0].Url != "https://example.com/edit.png" {
+		t.Fatalf("unexpected image response: %+v", imageResp)
+	}
+}
+
 func TestResolveAsyncImageTaskResponsesCombinesCompletedTasks(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -116,6 +148,34 @@ func TestResolveAsyncImageTaskResponsePollsAtTimeoutBoundary(t *testing.T) {
 	}
 	if len(imageResp.Data) != 1 || imageResp.Data[0].Url != "https://example.com/final.png" {
 		t.Fatalf("unexpected image response: %+v", imageResp)
+	}
+}
+
+func TestResolveAsyncImageTaskResponseRejectsNonJSONTaskStatusBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html>not found</html>`))
+	}))
+	defer server.Close()
+
+	_, _, ok, err := ResolveAsyncImageTaskResponse(context.Background(), []byte(`{"code":200,"data":[{"status":"submitted","task_id":"task_123"}]}`), AsyncImageTaskPollOptions{
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
+		Interval:   time.Millisecond,
+		Timeout:    time.Second,
+	})
+	if !ok {
+		t.Fatal("expected async task response to be detected")
+	}
+	var taskErr *AsyncImageTaskError
+	if !errors.As(err, &taskErr) {
+		t.Fatalf("expected AsyncImageTaskError, got %T: %v", err, err)
+	}
+	if taskErr.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected bad gateway status, got %d", taskErr.StatusCode)
+	}
+	if taskErr.OpenAIError.Message != "async image task polling returned non-JSON response" {
+		t.Fatalf("unexpected task error: %+v", taskErr.OpenAIError)
 	}
 }
 

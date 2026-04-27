@@ -262,7 +262,9 @@ func asyncImageTaskStatusURL(baseURL string, taskID string) (string, error) {
 		return "", fmt.Errorf("async image task base url is empty")
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
-	baseURL = strings.TrimSuffix(baseURL, "/images/generations")
+	for _, suffix := range []string{"/images/generations", "/images/edits"} {
+		baseURL = strings.TrimSuffix(baseURL, suffix)
+	}
 	if !strings.HasSuffix(baseURL, "/v1") {
 		baseURL += "/v1"
 	}
@@ -308,7 +310,7 @@ func fetchAsyncImageTaskStatus(ctx context.Context, client *http.Client, statusU
 
 	var statusResp asyncImageTaskStatusResponse
 	if err := common.Unmarshal(body, &statusResp); err != nil {
-		return nil, body, false, err
+		return nil, body, false, asyncImageTaskInvalidStatusBodyError(body)
 	}
 	if statusResp.Error != nil && statusResp.Error.Message != "" {
 		return nil, body, false, &AsyncImageTaskError{StatusCode: resp.StatusCode, OpenAIError: *statusResp.Error}
@@ -336,6 +338,21 @@ func fetchAsyncImageTaskStatus(ctx context.Context, client *http.Client, statusU
 		return nil, body, false, nil
 	default:
 		return nil, body, false, nil
+	}
+}
+
+func asyncImageTaskInvalidStatusBodyError(body []byte) error {
+	message := "async image task polling returned invalid JSON response"
+	if strings.HasPrefix(strings.TrimSpace(string(body)), "<") {
+		message = "async image task polling returned non-JSON response"
+	}
+	return &AsyncImageTaskError{
+		StatusCode: http.StatusBadGateway,
+		OpenAIError: types.OpenAIError{
+			Message: message,
+			Type:    "upstream_task_error",
+			Code:    "bad_task_response",
+		},
 	}
 }
 
