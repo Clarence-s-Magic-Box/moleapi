@@ -132,3 +132,30 @@ func TestImageStreamToResponsesEmitsPartialAndCompletedEvents(t *testing.T) {
 		}
 	}
 }
+
+func TestReadImageResponseResolvesAsyncTask(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/tasks/task_123" {
+			t.Fatalf("unexpected task path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":200,"data":{"id":"task_123","status":"completed","created":10,"completed":20,"result":{"images":[{"url":["https://example.com/generated.png"],"expires_at":30}]}}}`))
+	}))
+	defer server.Close()
+
+	c, _, resp, info := setupImageCompatStreamTest(`{"code":200,"data":[{"status":"submitted","task_id":"task_123"}]}`)
+	resp.Header = http.Header{"Content-Type": []string{"application/json"}}
+	info.ChannelBaseUrl = server.URL
+	info.ApiKey = "test-key"
+
+	imageResp, body, newAPIError := readImageResponse(c, info, resp)
+	if newAPIError != nil {
+		t.Fatalf("unexpected error: %v", newAPIError)
+	}
+	if len(imageResp.Data) != 1 || imageResp.Data[0].Url != "https://example.com/generated.png" {
+		t.Fatalf("unexpected image response: %+v", imageResp)
+	}
+	if !strings.Contains(string(body), `"url":"https://example.com/generated.png"`) {
+		t.Fatalf("expected resolved image response body, got %s", string(body))
+	}
+}

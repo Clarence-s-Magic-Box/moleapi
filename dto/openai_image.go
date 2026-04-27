@@ -26,6 +26,9 @@ type ImageRequest struct {
 	OutputFormat      json.RawMessage `json:"output_format,omitempty"`
 	OutputCompression json.RawMessage `json:"output_compression,omitempty"`
 	PartialImages     json.RawMessage `json:"partial_images,omitempty"`
+	Resolution        json.RawMessage `json:"resolution,omitempty"`
+	ImageUrls         json.RawMessage `json:"image_urls,omitempty"`
+	OfficialFallback  *bool           `json:"official_fallback,omitempty"`
 	Stream            *bool           `json:"stream,omitempty"`
 	Watermark         *bool           `json:"watermark,omitempty"`
 	// zhipu 4v

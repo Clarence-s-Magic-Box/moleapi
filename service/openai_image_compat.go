@@ -443,6 +443,13 @@ func applyImageOptionsFromMap(values map[string]any, imageReq *dto.ImageRequest)
 	assignRawOption(values, "output_compression", &imageReq.OutputCompression)
 	assignRawOption(values, "partial_images", &imageReq.PartialImages)
 	assignRawOption(values, "moderation", &imageReq.Moderation)
+	assignRawOption(values, "resolution", &imageReq.Resolution)
+	assignRawOption(values, "image_urls", &imageReq.ImageUrls)
+	if raw, ok := values["official_fallback"]; ok {
+		if enabled, ok := raw.(bool); ok {
+			imageReq.OfficialFallback = &enabled
+		}
+	}
 }
 
 func assignRawOption(values map[string]any, key string, target *json.RawMessage) {

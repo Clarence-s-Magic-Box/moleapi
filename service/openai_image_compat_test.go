@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 )
 
@@ -129,6 +130,30 @@ func TestResponsesRequestToImageRequest(t *testing.T) {
 	}
 	if string(imageReq.OutputFormat) != `"webp"` {
 		t.Fatalf("unexpected output_format: %s", string(imageReq.OutputFormat))
+	}
+}
+
+func TestApplyImageOptionsFromRawPreservesApimartFields(t *testing.T) {
+	imageReq := &dto.ImageRequest{}
+	ApplyImageOptionsFromRaw([]byte(`{"resolution":"2k","image_urls":["https://example.com/ref.png"],"official_fallback":false}`), imageReq)
+
+	if string(imageReq.Resolution) != `"2k"` {
+		t.Fatalf("unexpected resolution: %s", string(imageReq.Resolution))
+	}
+	if !strings.Contains(string(imageReq.ImageUrls), "https://example.com/ref.png") {
+		t.Fatalf("unexpected image_urls: %s", string(imageReq.ImageUrls))
+	}
+	if imageReq.OfficialFallback == nil || *imageReq.OfficialFallback {
+		t.Fatalf("expected explicit false official_fallback, got %v", imageReq.OfficialFallback)
+	}
+	body, err := common.Marshal(imageReq)
+	if err != nil {
+		t.Fatalf("marshal image request: %v", err)
+	}
+	for _, want := range []string{`"resolution":"2k"`, `"image_urls":["https://example.com/ref.png"]`, `"official_fallback":false`} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("expected %s in marshaled request, got %s", want, string(body))
+		}
 	}
 }
 

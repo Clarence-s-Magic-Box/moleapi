@@ -78,3 +78,34 @@ func TestOpenaiHandlerWithUsageAcceptsImageResponseWithData(t *testing.T) {
 		t.Fatalf("expected successful image response body, got %q", recorder.Body.String())
 	}
 }
+
+func TestOpenaiHandlerWithUsageResolvesAsyncImageTask(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/tasks/task_123" {
+			t.Fatalf("unexpected task path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":200,"data":{"id":"task_123","status":"completed","created":10,"completed":20,"result":{"images":[{"url":["https://example.com/generated.png"],"expires_at":30}]}}}`))
+	}))
+	defer server.Close()
+
+	c, recorder, resp, info := setupImageUsageHandlerTest(`{"code":200,"data":[{"status":"submitted","task_id":"task_123"}]}`)
+	info.ChannelBaseUrl = server.URL
+	info.ApiKey = "test-key"
+	info.SetEstimatePromptTokens(5)
+
+	usage, newAPIError := OpenaiHandlerWithUsage(c, info, resp)
+
+	if newAPIError != nil {
+		t.Fatalf("unexpected error: %v", newAPIError)
+	}
+	if usage == nil {
+		t.Fatal("expected usage")
+	}
+	if usage.PromptTokens != 5 || usage.CompletionTokens != 1 || usage.TotalTokens != 6 {
+		t.Fatalf("unexpected usage: %+v", usage)
+	}
+	if !strings.Contains(recorder.Body.String(), `"url":"https://example.com/generated.png"`) {
+		t.Fatalf("expected resolved image response body, got %q", recorder.Body.String())
+	}
+}

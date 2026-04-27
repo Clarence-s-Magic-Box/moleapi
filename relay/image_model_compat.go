@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -129,7 +130,7 @@ func doImageGenerationRequest(c *gin.Context, info *relaycommon.RelayInfo, adapt
 func imageResponseToChatCompletions(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, model string) (*dto.Usage, *types.NewAPIError) {
 	defer service.CloseResponseBodyGracefully(resp)
 
-	imageResp, body, newAPIError := readImageResponse(resp)
+	imageResp, body, newAPIError := readImageResponse(c, info, resp)
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
@@ -149,7 +150,7 @@ func imageResponseToChatCompletions(c *gin.Context, info *relaycommon.RelayInfo,
 func imageResponseToResponses(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, model string) (*dto.Usage, *types.NewAPIError) {
 	defer service.CloseResponseBodyGracefully(resp)
 
-	imageResp, body, newAPIError := readImageResponse(resp)
+	imageResp, body, newAPIError := readImageResponse(c, info, resp)
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
@@ -432,16 +433,41 @@ func updateImageCompatPromptEstimate(c *gin.Context, info *relaycommon.RelayInfo
 	info.SetEstimatePromptTokens(tokens)
 }
 
-func readImageResponse(resp *http.Response) (*dto.ImageResponse, []byte, *types.NewAPIError) {
+func readImageResponse(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.ImageResponse, []byte, *types.NewAPIError) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+	}
+	if info != nil {
+		imageResp, resolvedBody, ok, err := service.ResolveAsyncImageTaskResponse(c.Request.Context(), body, service.AsyncImageTaskPollOptions{
+			BaseURL: info.ChannelBaseUrl,
+			APIKey:  info.ApiKey,
+			Proxy:   info.ChannelSetting.Proxy,
+		})
+		if ok {
+			if err != nil {
+				return nil, nil, asyncImageTaskNewAPIError(err)
+			}
+			return imageResp, resolvedBody, nil
+		}
 	}
 	var imageResp dto.ImageResponse
 	if err := common.Unmarshal(body, &imageResp); err != nil {
 		return nil, nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	return &imageResp, body, nil
+}
+
+func asyncImageTaskNewAPIError(err error) *types.NewAPIError {
+	var taskErr *service.AsyncImageTaskError
+	if errors.As(err, &taskErr) {
+		statusCode := taskErr.StatusCode
+		if statusCode == 0 {
+			statusCode = http.StatusBadGateway
+		}
+		return types.WithOpenAIError(taskErr.OpenAIError, statusCode)
+	}
+	return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 }
 
 func applyImageOptionsFromRequestBody(c *gin.Context, imageReq *dto.ImageRequest) {
