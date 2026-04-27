@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -21,14 +20,6 @@ import (
 	"github.com/samber/lo"
 	"github.com/shopspring/decimal"
 )
-
-func isNonEpayPaymentMethodForEpayCallback(paymentMethod string) bool {
-	paymentMethod = strings.ToLower(paymentMethod)
-	return paymentMethod == model.PaymentMethodStripe ||
-		paymentMethod == model.PaymentMethodCreem ||
-		paymentMethod == model.PaymentMethodWaffo ||
-		paymentMethod == model.PaymentMethodWaffoPancake
-}
 
 func GetTopUpInfo(c *gin.Context) {
 	epayEnabled := operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != ""
@@ -272,13 +263,14 @@ func RequestEpay(c *gin.Context) {
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
 	topUp := &model.TopUp{
-		UserId:        id,
-		Amount:        amount,
-		Money:         payMoney,
-		TradeNo:       tradeNo,
-		PaymentMethod: req.PaymentMethod,
-		CreateTime:    time.Now().Unix(),
-		Status:        "pending",
+		UserId:          id,
+		Amount:          amount,
+		Money:           payMoney,
+		TradeNo:         tradeNo,
+		PaymentMethod:   req.PaymentMethod,
+		PaymentProvider: model.PaymentProviderEpay,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
 	}
 	err = topUp.Insert()
 	if err != nil {
@@ -391,11 +383,15 @@ func EpayNotify(c *gin.Context) {
 			logger.LogWarn(c.Request.Context(), fmt.Sprintf("Epay webhook 未找到本地订单 trade_no=%s gateway_trade_no=%s client_ip=%s", verifyInfo.ServiceTradeNo, verifyInfo.TradeNo, c.ClientIP()))
 			return
 		}
-		if !common.PaymentGatewayMatches(topUp.PaymentMethod, common.PaymentGatewayEpay) {
-			logger.LogWarn(c.Request.Context(), fmt.Sprintf("Epay webhook 订单支付方式不匹配 trade_no=%s payment_method=%s client_ip=%s", verifyInfo.ServiceTradeNo, topUp.PaymentMethod, c.ClientIP()))
+		if topUp.PaymentProvider != model.PaymentProviderEpay {
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 订单支付网关不匹配 trade_no=%s order_provider=%s callback_type=%s client_ip=%s", verifyInfo.ServiceTradeNo, topUp.PaymentProvider, verifyInfo.Type, c.ClientIP()))
 			return
 		}
 		if topUp.Status == common.TopUpStatusPending {
+			if topUp.PaymentMethod != verifyInfo.Type {
+				logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 实际支付方式与订单不同 trade_no=%s order_payment_method=%s actual_type=%s client_ip=%s", verifyInfo.ServiceTradeNo, topUp.PaymentMethod, verifyInfo.Type, c.ClientIP()))
+				topUp.PaymentMethod = verifyInfo.Type
+			}
 			topUp.Status = common.TopUpStatusSuccess
 			err := topUp.Update()
 			if err != nil {

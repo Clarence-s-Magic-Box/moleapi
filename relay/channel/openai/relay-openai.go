@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/channel/openrouter"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 
@@ -199,6 +201,7 @@ func OaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 	}
 
 	usage := &dto.Usage{}
+	completedImageCount := 0
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		var event dto.ImageStreamEvent
 		if err := common.UnmarshalJsonStr(data, &event); err != nil {
@@ -212,6 +215,9 @@ func OaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 		}
 		if event.Type == "image_generation.completed" {
 			usage = service.ImageUsageToUsage(event.Usage, info.GetEstimatePromptTokens())
+			if strings.TrimSpace(event.B64Json) != "" {
+				completedImageCount++
+			}
 		}
 	})
 	helper.Done(c)
@@ -219,6 +225,7 @@ func OaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 	if usage.TotalTokens == 0 {
 		usage = service.ImageUsageToUsage(nil, info.GetEstimatePromptTokens())
 	}
+	service.ApplyImageResultCountPricingFromCount(info, completedImageCount)
 	return usage, nil
 }
 
@@ -601,6 +608,36 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
+	if oaiError := usageResp.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || oaiError.Message != "") {
+		if oaiError.Type == "" {
+			oaiError.Type = "error"
+		}
+		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	}
+
+	if info != nil && (info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits) {
+		asyncImageResp, resolvedBody, ok, err := service.ResolveAsyncImageTaskResponse(c.Request.Context(), responseBody, service.AsyncImageTaskPollOptions{
+			BaseURL: info.ChannelBaseUrl,
+			APIKey:  info.ApiKey,
+			Proxy:   info.ChannelSetting.Proxy,
+		})
+		if ok {
+			if err != nil {
+				return nil, asyncImageTaskNewAPIError(err)
+			}
+			responseBody = resolvedBody
+			usageResp.Usage = *service.ImageUsageToUsage(asyncImageResp.Usage, info.GetEstimatePromptTokens())
+		}
+		var imageResp dto.ImageResponse
+		if err := common.Unmarshal(responseBody, &imageResp); err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		if _, ok := service.FirstImageData(&imageResp); !ok {
+			return nil, types.NewOpenAIError(fmt.Errorf("image response does not contain generated image data"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		service.ApplyImageResultCountPricing(info, &imageResp)
+	}
+
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
@@ -608,10 +645,10 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	// because the upstream has already consumed resources and returned content
 	// We should still perform billing even if parsing fails
 	// format
-	if usageResp.InputTokens > 0 {
+	if usageResp.PromptTokens == 0 && usageResp.InputTokens > 0 {
 		usageResp.PromptTokens += usageResp.InputTokens
 	}
-	if usageResp.OutputTokens > 0 {
+	if usageResp.CompletionTokens == 0 && usageResp.OutputTokens > 0 {
 		usageResp.CompletionTokens += usageResp.OutputTokens
 	}
 	if usageResp.InputTokensDetails != nil {
@@ -620,6 +657,18 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	}
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 	return &usageResp.Usage, nil
+}
+
+func asyncImageTaskNewAPIError(err error) *types.NewAPIError {
+	var taskErr *service.AsyncImageTaskError
+	if errors.As(err, &taskErr) {
+		statusCode := taskErr.StatusCode
+		if statusCode == 0 {
+			statusCode = http.StatusBadGateway
+		}
+		return types.WithOpenAIError(taskErr.OpenAIError, statusCode)
+	}
+	return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 }
 
 func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, responseBody []byte) {

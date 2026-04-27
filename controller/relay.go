@@ -126,7 +126,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	needCountToken := constant.CountToken
 	// Avoid building huge CombineText (strings.Join) when token counting and sensitive check are both disabled.
 	var meta *types.TokenCountMeta
-	if needSensitiveCheck || needCountToken {
+	if imageCompatMeta, ok := service.ImageCompatTokenCountMeta(request, relayInfo.OriginModelName); ok {
+		meta = imageCompatMeta
+	} else if needSensitiveCheck || needCountToken {
 		meta = request.GetTokenCountMeta()
 	} else {
 		meta = fastTokenCountMetaForPricing(request)

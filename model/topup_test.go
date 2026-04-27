@@ -30,14 +30,27 @@ func insertTopUpTestUser(t *testing.T, username string, quota int, email string)
 func insertTopUpRecord(t *testing.T, userID int, tradeNo string, paymentMethod string) *TopUp {
 	t.Helper()
 
+	paymentProvider := PaymentProviderEpay
+	switch paymentMethod {
+	case PaymentMethodStripe:
+		paymentProvider = PaymentProviderStripe
+	case PaymentMethodCreem:
+		paymentProvider = PaymentProviderCreem
+	case PaymentMethodWaffo:
+		paymentProvider = PaymentProviderWaffo
+	case PaymentMethodWaffoPancake:
+		paymentProvider = PaymentProviderWaffoPancake
+	}
+
 	topUp := &TopUp{
-		UserId:        userID,
-		Amount:        10,
-		Money:         12.34,
-		TradeNo:       tradeNo,
-		PaymentMethod: paymentMethod,
-		CreateTime:    1,
-		Status:        common.TopUpStatusPending,
+		UserId:          userID,
+		Amount:          10,
+		Money:           12.34,
+		TradeNo:         tradeNo,
+		PaymentMethod:   paymentMethod,
+		PaymentProvider: paymentProvider,
+		CreateTime:      1,
+		Status:          common.TopUpStatusPending,
 	}
 	require.NoError(t, DB.Create(topUp).Error)
 	return topUp

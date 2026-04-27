@@ -11,9 +11,9 @@ import (
 )
 
 var StartTime = time.Now().Unix() // unit: second
-var Version = "v0.9.12.1"         // this hard coding will be replaced automatically when building, no need to manually change
+var Version = "v0.9.13"           // this hard coding will be replaced automatically when building, no need to manually change
 // UpstreamVersion tracks the synced upstream new-api version for update checks and "Based on" display.
-var UpstreamVersion = "v0.13.0"
+var UpstreamVersion = "v0.13.1-patch.1"
 
 // Commit is the build git commit SHA (typically short). It can be injected via ldflags or env.
 var Commit = ""

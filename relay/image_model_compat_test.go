@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -65,6 +66,40 @@ func TestImageStreamToChatCompletionsUsesFinalImageOnly(t *testing.T) {
 	}
 }
 
+func TestImageStreamToChatCompletionsRejectsMissingCompletedImage(t *testing.T) {
+	sse := strings.Join([]string{
+		`data: {"type":"image_generation.partial_image","b64_json":"partial","partial_image_index":0}`,
+		`data: [DONE]`,
+		"",
+	}, "\n")
+	c, _, resp, info := setupImageCompatStreamTest(sse)
+
+	usage, newAPIError := imageStreamToChatCompletions(c, info, resp, "gpt-image-2")
+	if newAPIError == nil {
+		t.Fatal("expected error for stream without completed image")
+	}
+	if usage != nil {
+		t.Fatalf("expected no usage for failed image stream, got %+v", usage)
+	}
+}
+
+func TestImageStreamToChatCompletionsRejectsCompletedEventWithoutImage(t *testing.T) {
+	sse := strings.Join([]string{
+		`data: {"type":"image_generation.completed","output_format":"png","usage":{"input_tokens":3,"output_tokens":9,"total_tokens":12}}`,
+		`data: [DONE]`,
+		"",
+	}, "\n")
+	c, _, resp, info := setupImageCompatStreamTest(sse)
+
+	usage, newAPIError := imageStreamToChatCompletions(c, info, resp, "gpt-image-2")
+	if newAPIError == nil {
+		t.Fatal("expected error for completed image stream without image data")
+	}
+	if usage != nil {
+		t.Fatalf("expected no usage for failed image stream, got %+v", usage)
+	}
+}
+
 func TestImageStreamToResponsesEmitsPartialAndCompletedEvents(t *testing.T) {
 	sse := strings.Join([]string{
 		`data: {"type":"image_generation.partial_image","b64_json":"partial","partial_image_index":0,"output_format":"webp"}`,
@@ -96,5 +131,49 @@ func TestImageStreamToResponsesEmitsPartialAndCompletedEvents(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected %q in responses stream, got: %s", want, body)
 		}
+	}
+}
+
+func TestReadImageResponseResolvesAsyncTask(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/tasks/task_123" {
+			t.Fatalf("unexpected task path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":200,"data":{"id":"task_123","status":"completed","created":10,"completed":20,"result":{"images":[{"url":["https://example.com/generated.png"],"expires_at":30}]}}}`))
+	}))
+	defer server.Close()
+
+	c, _, resp, info := setupImageCompatStreamTest(`{"code":200,"data":[{"status":"submitted","task_id":"task_123"}]}`)
+	resp.Header = http.Header{"Content-Type": []string{"application/json"}}
+	info.ChannelBaseUrl = server.URL
+	info.ApiKey = "test-key"
+
+	imageResp, body, newAPIError := readImageResponse(c, info, resp)
+	if newAPIError != nil {
+		t.Fatalf("unexpected error: %v", newAPIError)
+	}
+	if len(imageResp.Data) != 1 || imageResp.Data[0].Url != "https://example.com/generated.png" {
+		t.Fatalf("unexpected image response: %+v", imageResp)
+	}
+	if !strings.Contains(string(body), `"url":"https://example.com/generated.png"`) {
+		t.Fatalf("expected resolved image response body, got %s", string(body))
+	}
+}
+
+func TestReadImageResponsePricesActualImageCount(t *testing.T) {
+	c, _, resp, info := setupImageCompatStreamTest(`{"created":123,"data":[{"url":"https://example.com/a.png"},{"url":"https://example.com/b.png"}]}`)
+	resp.Header = http.Header{"Content-Type": []string{"application/json"}}
+	info.PriceData = types.PriceData{UsePrice: true}
+
+	imageResp, _, newAPIError := readImageResponse(c, info, resp)
+	if newAPIError != nil {
+		t.Fatalf("unexpected error: %v", newAPIError)
+	}
+	if len(imageResp.Data) != 2 {
+		t.Fatalf("unexpected image response: %+v", imageResp)
+	}
+	if got := info.PriceData.OtherRatios["n"]; got != 2 {
+		t.Fatalf("expected actual image count pricing ratio 2, got %v", got)
 	}
 }
