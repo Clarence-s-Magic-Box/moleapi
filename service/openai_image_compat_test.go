@@ -55,6 +55,9 @@ func TestChatCompletionsRequestToImageRequest(t *testing.T) {
 	if string(imageReq.PartialImages) != "3" {
 		t.Fatalf("unexpected partial_images: %s", string(imageReq.PartialImages))
 	}
+	if !strings.Contains(string(imageReq.ImageUrls), "https://example.com/input.png") {
+		t.Fatalf("expected image_url to be forwarded as image_urls, got %s", string(imageReq.ImageUrls))
+	}
 }
 
 func TestChatCompletionsRequestToImageRequestStripsGeneratedImagePayloads(t *testing.T) {
@@ -107,7 +110,7 @@ func TestResponsesRequestToImageRequest(t *testing.T) {
 	req := &dto.OpenAIResponsesRequest{
 		Model:  "gpt-image-2",
 		Stream: &stream,
-		Input:  []byte(`[{"role":"user","content":[{"type":"input_text","text":"Make a launch poster"}]}]`),
+		Input:  []byte(`[{"role":"user","content":[{"type":"input_text","text":"Make a launch poster"},{"type":"input_image","image_url":"data:image/png;base64,abc123"}]}]`),
 		Tools:  []byte(`[{"type":"web_search_preview"},{"type":"image_generation","size":"1536x1024","quality":"medium","partial_images":2,"output_format":"webp"}]`),
 	}
 
@@ -130,6 +133,9 @@ func TestResponsesRequestToImageRequest(t *testing.T) {
 	}
 	if string(imageReq.OutputFormat) != `"webp"` {
 		t.Fatalf("unexpected output_format: %s", string(imageReq.OutputFormat))
+	}
+	if !strings.Contains(string(imageReq.ImageUrls), "data:image/png;base64,abc123") {
+		t.Fatalf("expected input_image to be forwarded as image_urls, got %s", string(imageReq.ImageUrls))
 	}
 }
 

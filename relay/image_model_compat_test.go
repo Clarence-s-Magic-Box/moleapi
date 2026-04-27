@@ -263,6 +263,23 @@ func TestReadImageResponsePricesActualImageCount(t *testing.T) {
 	}
 }
 
+func TestReadImageResponseRejectsNonJSONBodyAsUpstreamError(t *testing.T) {
+	c, _, resp, info := setupImageCompatStreamTest(`<html>bad gateway</html>`)
+	resp.Header = http.Header{"Content-Type": []string{"text/html"}}
+
+	imageResp, _, newAPIError := readImageResponse(c, info, resp, nil, nil)
+
+	if newAPIError == nil {
+		t.Fatal("expected non-json image response to return an error")
+	}
+	if newAPIError.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected bad gateway status, got %d", newAPIError.StatusCode)
+	}
+	if imageResp != nil {
+		t.Fatalf("expected no image response, got %+v", imageResp)
+	}
+}
+
 func TestReadImageResponseSplitsAsyncImageRequestsAndEstimatesOutputTokens(t *testing.T) {
 	service.InitHttpClient()
 	var extraSubmitSeen bool

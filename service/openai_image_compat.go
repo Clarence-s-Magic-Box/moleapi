@@ -169,6 +169,7 @@ func ChatCompletionsRequestToImageRequest(req *dto.GeneralOpenAIRequest) (*dto.I
 		imageReq.N = common.GetPointer(uint(*req.N))
 	}
 	ApplyImageOptionsFromRaw(req.ExtraBody, imageReq)
+	appendImageURLsToRequest(imageReq, imageURLsFromChatRequest(req))
 	return imageReq, nil
 }
 
@@ -192,6 +193,7 @@ func ResponsesRequestToImageRequest(req *dto.OpenAIResponsesRequest) (*dto.Image
 		User:   req.User,
 	}
 	ApplyImageGenerationToolOptions(req.Tools, imageReq)
+	appendImageURLsToRequest(imageReq, imageURLsFromResponsesRequest(req))
 	return imageReq, nil
 }
 
@@ -632,6 +634,45 @@ func extractPromptFromResponsesRequest(req *dto.OpenAIResponsesRequest) string {
 	return strings.TrimSpace(strings.Join(compactStrings(parts), "\n\n"))
 }
 
+func imageURLsFromChatRequest(req *dto.GeneralOpenAIRequest) []string {
+	if req == nil {
+		return nil
+	}
+	var urls []string
+	for _, msg := range req.Messages {
+		for _, part := range msg.ParseContent() {
+			if part.Type != dto.ContentTypeImageURL {
+				continue
+			}
+			image := part.GetImageMedia()
+			if image == nil {
+				continue
+			}
+			if url, ok := normalizeSupportedImageURL(image.Url); ok {
+				urls = append(urls, url)
+			}
+		}
+	}
+	urls = append(urls, imageURLsFromAny(req.Input)...)
+	return dedupeStrings(urls)
+}
+
+func imageURLsFromResponsesRequest(req *dto.OpenAIResponsesRequest) []string {
+	if req == nil {
+		return nil
+	}
+	var urls []string
+	for _, input := range req.ParseInput() {
+		if input.Type != "input_image" {
+			continue
+		}
+		if url, ok := normalizeSupportedImageURL(input.ImageUrl); ok {
+			urls = append(urls, url)
+		}
+	}
+	return dedupeStrings(urls)
+}
+
 func textPartsFromChatMessage(msg dto.Message) []string {
 	if msg.Content == nil {
 		return nil
@@ -784,6 +825,22 @@ func NormalizeGPTImage2GenerationImageInputs(imageReq *dto.ImageRequest) {
 	imageReq.Image = nil
 }
 
+func appendImageURLsToRequest(imageReq *dto.ImageRequest, urls []string) {
+	if imageReq == nil || len(urls) == 0 {
+		return
+	}
+	combined := append(imageURLsFromRawMessage(imageReq.ImageUrls), urls...)
+	combined = dedupeStrings(combined)
+	if len(combined) == 0 {
+		return
+	}
+	raw, err := common.Marshal(combined)
+	if err != nil {
+		return
+	}
+	imageReq.ImageUrls = raw
+}
+
 func imageURLsFromRawMessage(raw json.RawMessage) []string {
 	if len(raw) == 0 {
 		return nil
@@ -831,6 +888,26 @@ func normalizeSupportedImageURL(value string) (string, bool) {
 		return value, true
 	}
 	return "", false
+}
+
+func dedupeStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 func assignRawOption(values map[string]any, key string, target *json.RawMessage) {
