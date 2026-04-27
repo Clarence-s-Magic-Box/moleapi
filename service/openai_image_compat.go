@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,9 +18,81 @@ import (
 
 const gptImage2ModelPrefix = "gpt-image-2"
 
+type gptImage2Dimensions struct {
+	Width  int
+	Height int
+}
+
 var (
 	imagePromptMarkdownDataURLPattern = regexp.MustCompile(`!\[[^\]\r\n]*\]\(\s*data:image/[A-Za-z0-9.+-]+;base64,[^)]+\)`)
 	imagePromptDataURLPattern         = regexp.MustCompile(`data:image/[A-Za-z0-9.+-]+;base64,[-A-Za-z0-9+/_=]+`)
+
+	gptImage2QualityPatchColumns = map[string]int{
+		"low":    16,
+		"medium": 48,
+		"high":   96,
+	}
+
+	apimartGPTImage2Dimensions = map[string]map[string]gptImage2Dimensions{
+		"1:1": {
+			"1k": {Width: 1024, Height: 1024},
+			"2k": {Width: 2048, Height: 2048},
+		},
+		"3:2": {
+			"1k": {Width: 1536, Height: 1024},
+			"2k": {Width: 2048, Height: 1360},
+		},
+		"2:3": {
+			"1k": {Width: 1024, Height: 1536},
+			"2k": {Width: 1360, Height: 2048},
+		},
+		"4:3": {
+			"1k": {Width: 1024, Height: 768},
+			"2k": {Width: 2048, Height: 1536},
+		},
+		"3:4": {
+			"1k": {Width: 768, Height: 1024},
+			"2k": {Width: 1536, Height: 2048},
+		},
+		"5:4": {
+			"1k": {Width: 1280, Height: 1024},
+			"2k": {Width: 2560, Height: 2048},
+		},
+		"4:5": {
+			"1k": {Width: 1024, Height: 1280},
+			"2k": {Width: 2048, Height: 2560},
+		},
+		"16:9": {
+			"1k": {Width: 1536, Height: 864},
+			"2k": {Width: 2048, Height: 1152},
+			"4k": {Width: 3840, Height: 2160},
+		},
+		"9:16": {
+			"1k": {Width: 864, Height: 1536},
+			"2k": {Width: 1152, Height: 2048},
+			"4k": {Width: 2160, Height: 3840},
+		},
+		"2:1": {
+			"1k": {Width: 2048, Height: 1024},
+			"2k": {Width: 2688, Height: 1344},
+			"4k": {Width: 3840, Height: 1920},
+		},
+		"1:2": {
+			"1k": {Width: 1024, Height: 2048},
+			"2k": {Width: 1344, Height: 2688},
+			"4k": {Width: 1920, Height: 3840},
+		},
+		"21:9": {
+			"1k": {Width: 2016, Height: 864},
+			"2k": {Width: 2688, Height: 1152},
+			"4k": {Width: 3840, Height: 1648},
+		},
+		"9:21": {
+			"1k": {Width: 864, Height: 2016},
+			"2k": {Width: 1152, Height: 2688},
+			"4k": {Width: 1648, Height: 3840},
+		},
+	}
 )
 
 func IsGPTImage2Model(model string) bool {
@@ -53,6 +127,22 @@ func ImageCompatTokenCountMeta(req dto.Request, model string) (*types.TokenCount
 	default:
 		return nil, false
 	}
+}
+
+func RequestedImageCount(req *dto.ImageRequest) int {
+	if req == nil || req.N == nil || *req.N == 0 {
+		return 1
+	}
+	return int(*req.N)
+}
+
+func ImageRequestWithCount(req *dto.ImageRequest, count uint) *dto.ImageRequest {
+	if req == nil {
+		return nil
+	}
+	copied := *req
+	copied.N = common.GetPointer(count)
+	return &copied
 }
 
 func ChatCompletionsRequestToImageRequest(req *dto.GeneralOpenAIRequest) (*dto.ImageRequest, error) {
@@ -106,10 +196,15 @@ func ResponsesRequestToImageRequest(req *dto.OpenAIResponsesRequest) (*dto.Image
 }
 
 func ImageUsageToUsage(imageUsage *dto.Usage, fallbackPromptTokens int) *dto.Usage {
+	return ImageUsageToUsageWithOutputFallback(imageUsage, fallbackPromptTokens, 0)
+}
+
+func ImageUsageToUsageWithOutputFallback(imageUsage *dto.Usage, fallbackPromptTokens int, fallbackOutputTokens int) *dto.Usage {
 	usage := &dto.Usage{}
 	if imageUsage != nil {
 		*usage = *imageUsage
 	}
+	outputFallbackApplied := false
 
 	if usage.PromptTokens == 0 && usage.InputTokens != 0 {
 		usage.PromptTokens = usage.InputTokens
@@ -133,15 +228,183 @@ func ImageUsageToUsage(imageUsage *dto.Usage, fallbackPromptTokens int) *dto.Usa
 		usage.PromptTokens = fallbackPromptTokens
 		usage.InputTokens = fallbackPromptTokens
 	}
+	if fallbackOutputTokens > 0 && shouldApplyImageOutputTokenFallback(usage) {
+		usage.CompletionTokens = fallbackOutputTokens
+		usage.OutputTokens = fallbackOutputTokens
+		usage.CompletionTokenDetails.ImageTokens = fallbackOutputTokens
+		outputFallbackApplied = true
+	}
 	if usage.CompletionTokens == 0 && imageUsage == nil {
 		usage.CompletionTokens = 1
 		usage.OutputTokens = 1
 		usage.CompletionTokenDetails.ImageTokens = 1
 	}
-	if usage.TotalTokens == 0 {
+	if usage.TotalTokens == 0 || outputFallbackApplied {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
 	return usage
+}
+
+func ApplyImageUsageOutputTokenFallback(resp *dto.ImageResponse, req *dto.ImageRequest, fallbackPromptTokens int) {
+	if resp == nil || req == nil {
+		return
+	}
+	outputTokens, ok := GPTImage2OutputTokensForRequest(req, ImageDataCount(resp))
+	if !ok {
+		return
+	}
+	resp.Usage = ImageUsageToUsageWithOutputFallback(resp.Usage, fallbackPromptTokens, outputTokens)
+}
+
+func GPTImage2OutputTokensForRequest(req *dto.ImageRequest, imageCount int) (int, bool) {
+	if req == nil || imageCount <= 0 || !IsGPTImage2Model(req.Model) {
+		return 0, false
+	}
+	dimensions, ok := resolveGPTImage2Dimensions(req)
+	if !ok {
+		return 0, false
+	}
+	tokens, ok := gptImage2OutputTokens(dimensions.Width, dimensions.Height, normalizeGPTImage2Quality(req.Quality))
+	if !ok {
+		return 0, false
+	}
+	return tokens * imageCount, true
+}
+
+func shouldApplyImageOutputTokenFallback(usage *dto.Usage) bool {
+	if usage == nil {
+		return true
+	}
+	maxTokens := usage.CompletionTokens
+	if usage.OutputTokens > maxTokens {
+		maxTokens = usage.OutputTokens
+	}
+	if usage.CompletionTokenDetails.ImageTokens > maxTokens {
+		maxTokens = usage.CompletionTokenDetails.ImageTokens
+	}
+	return maxTokens <= 1
+}
+
+func resolveGPTImage2Dimensions(req *dto.ImageRequest) (gptImage2Dimensions, bool) {
+	if req == nil {
+		return gptImage2Dimensions{}, false
+	}
+	size := strings.ToLower(strings.TrimSpace(req.Size))
+	if size == "" || size == "auto" {
+		size = "1024x1024"
+	}
+	if dimensions, ok := parseGPTImage2ExplicitDimensions(size); ok {
+		return dimensions, true
+	}
+
+	resolution := strings.ToLower(strings.TrimSpace(rawJSONOptionString(req.Resolution)))
+	if resolution == "" || resolution == "auto" {
+		resolution = "1k"
+	}
+	byResolution, ok := apimartGPTImage2Dimensions[size]
+	if !ok {
+		return gptImage2Dimensions{}, false
+	}
+	dimensions, ok := byResolution[resolution]
+	return dimensions, ok
+}
+
+func parseGPTImage2ExplicitDimensions(size string) (gptImage2Dimensions, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(size))
+	normalized = strings.ReplaceAll(normalized, "×", "x")
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	parts := strings.Split(normalized, "x")
+	if len(parts) != 2 {
+		return gptImage2Dimensions{}, false
+	}
+	width, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return gptImage2Dimensions{}, false
+	}
+	height, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return gptImage2Dimensions{}, false
+	}
+	return gptImage2Dimensions{Width: width, Height: height}, true
+}
+
+func normalizeGPTImage2Quality(quality string) string {
+	switch strings.ToLower(strings.TrimSpace(quality)) {
+	case "low":
+		return "low"
+	case "high", "hd":
+		return "high"
+	case "medium", "standard":
+		return "medium"
+	default:
+		return "medium"
+	}
+}
+
+func gptImage2OutputTokens(width int, height int, quality string) (int, bool) {
+	if !validGPTImage2Dimensions(width, height) {
+		return 0, false
+	}
+	factor, ok := gptImage2QualityPatchColumns[quality]
+	if !ok {
+		return 0, false
+	}
+	longSide := maxInt(width, height)
+	shortSide := minInt(width, height)
+	scaledShort := int(math.Round(float64(factor) * float64(shortSide) / float64(longSide)))
+	columns := factor
+	rows := scaledShort
+	if height > width {
+		columns = scaledShort
+		rows = factor
+	}
+	patches := columns * rows
+	pixels := width * height
+	return int(math.Ceil(float64(patches) * float64(2000000+pixels) / 4000000.0)), true
+}
+
+func validGPTImage2Dimensions(width int, height int) bool {
+	if width <= 0 || height <= 0 {
+		return false
+	}
+	if width%16 != 0 || height%16 != 0 {
+		return false
+	}
+	pixels := width * height
+	if pixels < 655360 || pixels > 8294400 {
+		return false
+	}
+	longSide := maxInt(width, height)
+	shortSide := minInt(width, height)
+	if longSide > 3840 || float64(longSide)/float64(shortSide) > 3 {
+		return false
+	}
+	return true
+}
+
+func rawJSONOptionString(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var value string
+	if err := common.Unmarshal(raw, &value); err == nil {
+		return value
+	}
+	return strings.Trim(string(raw), `"`)
+}
+
+func maxInt(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func minInt(a int, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func FirstImageData(resp *dto.ImageResponse) (dto.ImageData, bool) {

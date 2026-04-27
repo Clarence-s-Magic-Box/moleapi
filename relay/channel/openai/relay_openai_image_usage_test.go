@@ -7,8 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
@@ -125,5 +127,59 @@ func TestOpenaiHandlerWithUsageResolvesAsyncImageTask(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), `"url":"https://example.com/generated.png"`) {
 		t.Fatalf("expected resolved image response body, got %q", recorder.Body.String())
+	}
+}
+
+func TestOpenaiHandlerWithUsageSplitsAsyncImageRequestsAndEstimatesOutputTokens(t *testing.T) {
+	service.InitHttpClient()
+	var extraSubmitSeen bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/images/generations":
+			extraSubmitSeen = true
+			body, _ := io.ReadAll(r.Body)
+			if !strings.Contains(string(body), `"n":1`) {
+				t.Fatalf("expected additional upstream request to use n=1, got %s", string(body))
+			}
+			_, _ = w.Write([]byte(`{"code":200,"data":[{"status":"submitted","task_id":"task_2"}]}`))
+		case "/v1/tasks/task_1":
+			_, _ = w.Write([]byte(`{"code":200,"data":{"id":"task_1","status":"completed","created":10,"completed":20,"result":{"images":[{"url":["https://example.com/a.png"],"expires_at":30}]}}}`))
+		case "/v1/tasks/task_2":
+			_, _ = w.Write([]byte(`{"code":200,"data":{"id":"task_2","status":"completed","created":11,"completed":21,"result":{"images":[{"url":["https://example.com/b.png"],"expires_at":31}]}}}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	c, recorder, resp, info := setupImageUsageHandlerTest(`{"code":200,"data":[{"status":"submitted","task_id":"task_1"}]}`)
+	n := uint(2)
+	info.ChannelBaseUrl = server.URL
+	info.RequestURLPath = "/v1/images/generations"
+	info.Request = &dto.ImageRequest{Model: "gpt-image-2", Prompt: "draw", N: &n, Size: "1024x1024", Quality: "low"}
+	info.PriceData = types.PriceData{UsePrice: true}
+	info.SetEstimatePromptTokens(5)
+
+	usage, newAPIError := OpenaiHandlerWithUsage(c, info, resp)
+
+	if newAPIError != nil {
+		t.Fatalf("unexpected error: %v", newAPIError)
+	}
+	if !extraSubmitSeen {
+		t.Fatal("expected an additional upstream task submission")
+	}
+	if usage == nil || usage.PromptTokens != 5 || usage.CompletionTokens != 392 || usage.TotalTokens != 397 {
+		t.Fatalf("unexpected usage: %+v", usage)
+	}
+	if got := info.PriceData.OtherRatios["n"]; got != 2 {
+		t.Fatalf("expected actual image count pricing ratio 2, got %v", got)
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, "https://example.com/a.png") || !strings.Contains(body, "https://example.com/b.png") {
+		t.Fatalf("expected both image urls in response, got %s", body)
+	}
+	if !strings.Contains(body, `"completion_tokens":392`) {
+		t.Fatalf("expected size-based output tokens in response, got %s", body)
 	}
 }

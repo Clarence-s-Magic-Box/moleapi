@@ -127,6 +127,65 @@ func ResolveAsyncImageTaskResponse(ctx context.Context, submitBody []byte, opts 
 	}
 }
 
+func ResolveAsyncImageTaskResponses(ctx context.Context, submitBodies [][]byte, opts AsyncImageTaskPollOptions) (*dto.ImageResponse, []byte, bool, error) {
+	if len(submitBodies) == 0 {
+		return nil, nil, false, nil
+	}
+
+	combined := &dto.ImageResponse{}
+	metadataItems := make([]json.RawMessage, 0, len(submitBodies))
+	detectedAsync := false
+
+	for i, submitBody := range submitBodies {
+		taskOpts := opts
+		if i > 0 {
+			taskOpts.InitialDelay = 0
+		}
+		imageResp, _, ok, err := ResolveAsyncImageTaskResponse(ctx, submitBody, taskOpts)
+		if err != nil {
+			return nil, nil, true, err
+		}
+		if !ok {
+			if i == 0 {
+				return nil, nil, false, nil
+			}
+			var normalResp dto.ImageResponse
+			if unmarshalErr := common.Unmarshal(submitBody, &normalResp); unmarshalErr != nil || ImageDataCount(&normalResp) == 0 {
+				return nil, nil, detectedAsync, fmt.Errorf("additional image task response is not async")
+			}
+			imageResp = &normalResp
+		} else {
+			detectedAsync = true
+		}
+
+		if combined.Created == 0 || (imageResp.Created != 0 && imageResp.Created < combined.Created) {
+			combined.Created = imageResp.Created
+		}
+		combined.Data = append(combined.Data, ImageDataItems(imageResp)...)
+		if imageResp.Metadata != nil {
+			metadataItems = append(metadataItems, imageResp.Metadata)
+		} else if len(submitBody) > 0 {
+			metadataItems = append(metadataItems, json.RawMessage(submitBody))
+		}
+	}
+
+	if len(combined.Data) == 0 {
+		return nil, nil, detectedAsync, fmt.Errorf("async image tasks completed without image data")
+	}
+	if len(metadataItems) > 0 {
+		metadata, err := common.Marshal(metadataItems)
+		if err != nil {
+			return nil, nil, detectedAsync, err
+		}
+		combined.Metadata = metadata
+	}
+	body, err := common.Marshal(combined)
+	if err != nil {
+		return nil, nil, detectedAsync, err
+	}
+	return combined, body, detectedAsync, nil
+}
+
 func ExtractAsyncImageTaskID(body []byte) (string, bool, error) {
 	if len(body) == 0 {
 		return "", false, nil
