@@ -38,8 +38,11 @@ func chatCompletionsViaImageGeneration(c *gin.Context, info *relaycommon.RelayIn
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
-	if imageReq.IsStream(c) || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream") {
+	if isEventStreamImageResponse(httpResp) {
 		return imageStreamToChatCompletions(c, info, httpResp, imageReq.Model, imageReq)
+	}
+	if imageReq.IsStream(c) {
+		return imageResponseToChatCompletionsStream(c, info, httpResp, imageReq.Model, adaptor, imageReq)
 	}
 	return imageResponseToChatCompletions(c, info, httpResp, imageReq.Model, adaptor, imageReq)
 }
@@ -57,8 +60,11 @@ func responsesViaImageGeneration(c *gin.Context, info *relaycommon.RelayInfo, ad
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
-	if imageReq.IsStream(c) || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream") {
+	if isEventStreamImageResponse(httpResp) {
 		return imageStreamToResponses(c, info, httpResp, imageReq.Model, imageReq)
+	}
+	if imageReq.IsStream(c) {
+		return imageResponseToResponsesStream(c, info, httpResp, imageReq.Model, adaptor, imageReq)
 	}
 	return imageResponseToResponses(c, info, httpResp, imageReq.Model, adaptor, imageReq)
 }
@@ -80,6 +86,7 @@ func doImageGenerationRequest(c *gin.Context, info *relaycommon.RelayInfo, adapt
 	info.RelayMode = relayconstant.RelayModeImagesGenerations
 	info.RequestURLPath = "/v1/images/generations"
 	info.Request = imageReq
+	service.NormalizeGPTImage2GenerationImageInputs(imageReq)
 
 	convertedRequest, err := adaptor.ConvertImageRequest(c, info, *imageReq)
 	if err != nil {
@@ -164,6 +171,124 @@ func imageResponseToResponses(c *gin.Context, info *relaycommon.RelayInfo, resp 
 		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
 	}
 	service.IOCopyBytesGracefully(c, resp, body)
+	return usage, nil
+}
+
+func imageResponseToChatCompletionsStream(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, model string, adaptor channel.Adaptor, imageReq *dto.ImageRequest) (*dto.Usage, *types.NewAPIError) {
+	defer service.CloseResponseBodyGracefully(resp)
+
+	imageResp, _, newAPIError := readImageResponse(c, info, resp, adaptor, imageReq)
+	if newAPIError != nil {
+		return nil, newAPIError
+	}
+	images := service.ImageDataItems(imageResp)
+	if len(images) == 0 {
+		return nil, types.NewOpenAIError(fmt.Errorf("image response does not contain generated image data"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	helper.SetEventStreamHeaders(c)
+	responseID := helper.GetResponseID(c)
+	created := imageResp.Created
+	if created == 0 {
+		created = time.Now().Unix()
+	}
+	usage := service.ImageUsageToUsage(imageResp.Usage, info.GetEstimatePromptTokens())
+
+	if err := helper.ObjectData(c, helper.GenerateStartEmptyResponse(responseID, created, model, nil)); err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+	}
+	content := strings.Join(service.ImageMarkdownContents(images, imageResp.OutputFormat), "\n\n")
+	chunk := &dto.ChatCompletionsStreamResponse{
+		Id:      responseID,
+		Object:  "chat.completion.chunk",
+		Created: created,
+		Model:   model,
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{
+				Index: 0,
+				Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+					Content: &content,
+				},
+			},
+		},
+	}
+	if err := helper.ObjectData(c, chunk); err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+	}
+	if err := helper.ObjectData(c, helper.GenerateStopResponse(responseID, created, model, "stop")); err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+	}
+	if info.ShouldIncludeUsage {
+		if err := helper.ObjectData(c, helper.GenerateFinalUsageResponse(responseID, created, model, *usage)); err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+		}
+	}
+	helper.Done(c)
+	return usage, nil
+}
+
+func imageResponseToResponsesStream(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, model string, adaptor channel.Adaptor, imageReq *dto.ImageRequest) (*dto.Usage, *types.NewAPIError) {
+	defer service.CloseResponseBodyGracefully(resp)
+
+	imageResp, _, newAPIError := readImageResponse(c, info, resp, adaptor, imageReq)
+	if newAPIError != nil {
+		return nil, newAPIError
+	}
+
+	responseID := getResponsesCompatID(c)
+	itemID := getImageCompatItemID(c)
+	response, usage, err := service.ImageResponseToResponsesResponse(imageResp, model, responseID, itemID, info.GetEstimatePromptTokens())
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+	outputItems, ok := response["output"].([]map[string]any)
+	if !ok || len(outputItems) == 0 {
+		return nil, types.NewOpenAIError(fmt.Errorf("image response does not contain generated image data"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	helper.SetEventStreamHeaders(c)
+	sendEvent := func(eventType string, payload map[string]any) *types.NewAPIError {
+		payload["type"] = eventType
+		data, err := common.Marshal(payload)
+		if err != nil {
+			return types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
+		}
+		helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: eventType}, string(data))
+		return nil
+	}
+	if newAPIError := sendEvent("response.created", map[string]any{
+		"response": map[string]any{
+			"id":         responseID,
+			"object":     "response",
+			"created_at": response["created_at"],
+			"status":     "in_progress",
+			"model":      model,
+			"output":     []any{},
+		},
+	}); newAPIError != nil {
+		return nil, newAPIError
+	}
+	for index, outputItem := range outputItems {
+		if newAPIError := sendEvent(dto.ResponsesOutputTypeItemAdded, map[string]any{
+			"output_index": index,
+			"item": map[string]any{
+				"id":     outputItem["id"],
+				"type":   outputItem["type"],
+				"status": "in_progress",
+			},
+		}); newAPIError != nil {
+			return nil, newAPIError
+		}
+		if newAPIError := sendEvent(dto.ResponsesOutputTypeItemDone, map[string]any{
+			"output_index": index,
+			"item":         outputItem,
+		}); newAPIError != nil {
+			return nil, newAPIError
+		}
+	}
+	if newAPIError := sendEvent("response.completed", map[string]any{"response": response}); newAPIError != nil {
+		return nil, newAPIError
+	}
 	return usage, nil
 }
 
@@ -521,6 +646,13 @@ func imageOutputTokenFallback(imageReq *dto.ImageRequest, imageCount int) int {
 	return outputTokens
 }
 
+func isEventStreamImageResponse(resp *http.Response) bool {
+	if resp == nil {
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Type"))), "text/event-stream")
+}
+
 func asyncImageTaskNewAPIError(err error) *types.NewAPIError {
 	var taskErr *service.AsyncImageTaskError
 	if errors.As(err, &taskErr) {
@@ -528,9 +660,9 @@ func asyncImageTaskNewAPIError(err error) *types.NewAPIError {
 		if statusCode == 0 {
 			statusCode = http.StatusBadGateway
 		}
-		return types.WithOpenAIError(taskErr.OpenAIError, statusCode)
+		return types.WithOpenAIError(taskErr.OpenAIError, statusCode, types.ErrOptionWithSkipRetry())
 	}
-	return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
 }
 
 func applyImageOptionsFromRequestBody(c *gin.Context, imageReq *dto.ImageRequest) {
