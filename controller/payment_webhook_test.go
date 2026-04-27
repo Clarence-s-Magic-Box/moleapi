@@ -49,14 +49,29 @@ func setupPaymentWebhookTestDB(t *testing.T) *gorm.DB {
 func insertWebhookTopUp(t *testing.T, db *gorm.DB, tradeNo string, paymentMethod string, status string) *model.TopUp {
 	t.Helper()
 
+	paymentProvider := model.PaymentProviderEpay
+	switch paymentMethod {
+	case model.PaymentMethodStripe:
+		paymentProvider = model.PaymentProviderStripe
+	case model.PaymentMethodCreem:
+		paymentProvider = model.PaymentProviderCreem
+	case model.PaymentMethodWaffo:
+		paymentProvider = model.PaymentProviderWaffo
+	case model.PaymentMethodWaffoPancake:
+		paymentProvider = model.PaymentProviderWaffoPancake
+	case "lantu":
+		paymentProvider = model.PaymentProviderLanTu
+	}
+
 	topUp := &model.TopUp{
-		UserId:        1,
-		Amount:        10,
-		Money:         1.23,
-		TradeNo:       tradeNo,
-		PaymentMethod: paymentMethod,
-		CreateTime:    1,
-		Status:        status,
+		UserId:          1,
+		Amount:          10,
+		Money:           1.23,
+		TradeNo:         tradeNo,
+		PaymentMethod:   paymentMethod,
+		PaymentProvider: paymentProvider,
+		CreateTime:      1,
+		Status:          status,
 	}
 	require.NoError(t, db.Create(topUp).Error)
 	return topUp

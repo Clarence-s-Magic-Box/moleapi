@@ -173,13 +173,14 @@ func RequestLanTuPay(c *gin.Context) {
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
 	topUp := &model.TopUp{
-		UserId:        id,
-		Amount:        amount,
-		Money:         payMoney,
-		TradeNo:       tradeNo,
-		PaymentMethod: lanTuPaymentMethod,
-		CreateTime:    time.Now().Unix(),
-		Status:        common.TopUpStatusPending,
+		UserId:          id,
+		Amount:          amount,
+		Money:           payMoney,
+		TradeNo:         tradeNo,
+		PaymentMethod:   lanTuPaymentMethod,
+		PaymentProvider: model.PaymentProviderLanTu,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
 	}
 	if err := topUp.Insert(); err != nil {
 		c.JSON(200, gin.H{"message": "error", "data": "创建订单失败"})
@@ -259,8 +260,8 @@ func LanTuPayNotify(c *gin.Context) {
 		c.String(http.StatusOK, "FAIL")
 		return
 	}
-	if !common.PaymentGatewayMatches(topUp.PaymentMethod, common.PaymentGatewayLanTu) {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("LanTu webhook 订单支付方式不匹配 trade_no=%s payment_method=%s client_ip=%s", outTradeNo, topUp.PaymentMethod, c.ClientIP()))
+	if topUp.PaymentProvider != model.PaymentProviderLanTu {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("LanTu webhook 订单支付网关不匹配 trade_no=%s payment_provider=%s client_ip=%s", outTradeNo, topUp.PaymentProvider, c.ClientIP()))
 		c.String(http.StatusOK, "SUCCESS")
 		return
 	}

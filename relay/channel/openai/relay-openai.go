@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/channel/openrouter"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 
@@ -599,6 +600,23 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	err = common.Unmarshal(responseBody, &usageResp)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	if oaiError := usageResp.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || oaiError.Message != "") {
+		if oaiError.Type == "" {
+			oaiError.Type = "error"
+		}
+		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	}
+
+	if info != nil && (info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits) {
+		var imageResp dto.ImageResponse
+		if err := common.Unmarshal(responseBody, &imageResp); err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		if _, ok := service.FirstImageData(&imageResp); !ok {
+			return nil, types.NewOpenAIError(fmt.Errorf("image response does not contain generated image data"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
 	}
 
 	// 写入新的 response body
