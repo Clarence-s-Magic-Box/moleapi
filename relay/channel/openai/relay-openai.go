@@ -201,6 +201,7 @@ func OaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 	}
 
 	usage := &dto.Usage{}
+	completedImageCount := 0
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		var event dto.ImageStreamEvent
 		if err := common.UnmarshalJsonStr(data, &event); err != nil {
@@ -214,6 +215,9 @@ func OaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 		}
 		if event.Type == "image_generation.completed" {
 			usage = service.ImageUsageToUsage(event.Usage, info.GetEstimatePromptTokens())
+			if strings.TrimSpace(event.B64Json) != "" {
+				completedImageCount++
+			}
 		}
 	})
 	helper.Done(c)
@@ -221,6 +225,7 @@ func OaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 	if usage.TotalTokens == 0 {
 		usage = service.ImageUsageToUsage(nil, info.GetEstimatePromptTokens())
 	}
+	service.ApplyImageResultCountPricingFromCount(info, completedImageCount)
 	return usage, nil
 }
 
@@ -630,6 +635,7 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		if _, ok := service.FirstImageData(&imageResp); !ok {
 			return nil, types.NewOpenAIError(fmt.Errorf("image response does not contain generated image data"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}
+		service.ApplyImageResultCountPricing(info, &imageResp)
 	}
 
 	// 写入新的 response body

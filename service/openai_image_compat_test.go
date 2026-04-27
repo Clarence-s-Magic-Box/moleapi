@@ -184,6 +184,69 @@ func TestImageResponseToChatResponse(t *testing.T) {
 	}
 }
 
+func TestImageResponseToChatResponseIncludesAllImages(t *testing.T) {
+	resp := &dto.ImageResponse{
+		Created:      123,
+		OutputFormat: "png",
+		Data: []dto.ImageData{
+			{Url: "https://example.com/a.png"},
+			{Url: "https://example.com/b.png"},
+		},
+		Usage: &dto.Usage{PromptTokens: 5, CompletionTokens: 7, TotalTokens: 12},
+	}
+
+	chatResp, _, err := ImageResponseToChatResponse(resp, "gpt-image-2", "chatcmpl_test", 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, ok := chatResp.Choices[0].Message.Content.(string)
+	if !ok {
+		t.Fatalf("expected string content, got %T", chatResp.Choices[0].Message.Content)
+	}
+	if !strings.Contains(content, "https://example.com/a.png") || !strings.Contains(content, "https://example.com/b.png") {
+		t.Fatalf("expected both images in chat content, got %q", content)
+	}
+}
+
+func TestImageResponseToResponsesResponseIncludesAllImages(t *testing.T) {
+	resp := &dto.ImageResponse{
+		Created: 123,
+		Data: []dto.ImageData{
+			{Url: "https://example.com/a.png"},
+			{Url: "https://example.com/b.png"},
+		},
+		Usage: &dto.Usage{PromptTokens: 5, CompletionTokens: 7, TotalTokens: 12},
+	}
+
+	response, _, err := ImageResponseToResponsesResponse(resp, "gpt-image-2", "resp_test", "igc_test", 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output, ok := response["output"].([]map[string]any)
+	if !ok || len(output) != 2 {
+		t.Fatalf("expected two output items, got %#v", response["output"])
+	}
+	if output[0]["result"] != "https://example.com/a.png" || output[1]["result"] != "https://example.com/b.png" {
+		t.Fatalf("unexpected output items: %#v", output)
+	}
+}
+
+func TestImageDataCountIgnoresEmptyItems(t *testing.T) {
+	resp := &dto.ImageResponse{
+		Data: []dto.ImageData{
+			{},
+			{Url: "https://example.com/a.png"},
+			{B64Json: "abc123"},
+		},
+	}
+
+	if got := ImageDataCount(resp); got != 2 {
+		t.Fatalf("expected 2 images, got %d", got)
+	}
+}
+
 func TestImageResponseToResponsesResponse(t *testing.T) {
 	resp := &dto.ImageResponse{
 		Created:      456,

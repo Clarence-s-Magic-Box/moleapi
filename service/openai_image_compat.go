@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 )
 
@@ -144,15 +145,42 @@ func ImageUsageToUsage(imageUsage *dto.Usage, fallbackPromptTokens int) *dto.Usa
 }
 
 func FirstImageData(resp *dto.ImageResponse) (dto.ImageData, bool) {
-	if resp == nil || len(resp.Data) == 0 {
+	items := ImageDataItems(resp)
+	if len(items) == 0 {
 		return dto.ImageData{}, false
 	}
+	return items[0], true
+}
+
+func ImageDataItems(resp *dto.ImageResponse) []dto.ImageData {
+	if resp == nil || len(resp.Data) == 0 {
+		return nil
+	}
+	items := make([]dto.ImageData, 0, len(resp.Data))
 	for _, item := range resp.Data {
 		if item.B64Json != "" || item.Url != "" {
-			return item, true
+			items = append(items, item)
 		}
 	}
-	return dto.ImageData{}, false
+	return items
+}
+
+func ImageDataCount(resp *dto.ImageResponse) int {
+	return len(ImageDataItems(resp))
+}
+
+func ApplyImageResultCountPricing(info *relaycommon.RelayInfo, resp *dto.ImageResponse) {
+	if info == nil || !info.PriceData.UsePrice {
+		return
+	}
+	ApplyImageResultCountPricingFromCount(info, ImageDataCount(resp))
+}
+
+func ApplyImageResultCountPricingFromCount(info *relaycommon.RelayInfo, count int) {
+	if info == nil || !info.PriceData.UsePrice || count <= 0 {
+		return
+	}
+	info.PriceData.AddOtherRatio("n", float64(count))
 }
 
 func ImageMarkdownContent(image dto.ImageData, outputFormat string) string {
@@ -165,11 +193,22 @@ func ImageMarkdownContent(image dto.ImageData, outputFormat string) string {
 	return ""
 }
 
+func ImageMarkdownContents(images []dto.ImageData, outputFormat string) []string {
+	contents := make([]string, 0, len(images))
+	for _, image := range images {
+		if content := ImageMarkdownContent(image, outputFormat); content != "" {
+			contents = append(contents, content)
+		}
+	}
+	return contents
+}
+
 func ImageResponseToChatResponse(resp *dto.ImageResponse, model string, id string, fallbackPromptTokens int) (*dto.OpenAITextResponse, *dto.Usage, error) {
-	image, ok := FirstImageData(resp)
-	if !ok {
+	images := ImageDataItems(resp)
+	if len(images) == 0 {
 		return nil, nil, errors.New("image response does not contain generated image data")
 	}
+	content := strings.Join(ImageMarkdownContents(images, resp.OutputFormat), "\n\n")
 
 	usage := ImageUsageToUsage(resp.Usage, fallbackPromptTokens)
 	created := resp.Created
@@ -187,7 +226,7 @@ func ImageResponseToChatResponse(resp *dto.ImageResponse, model string, id strin
 				Index: 0,
 				Message: dto.Message{
 					Role:    "assistant",
-					Content: ImageMarkdownContent(image, resp.OutputFormat),
+					Content: content,
 				},
 				FinishReason: "stop",
 			},
@@ -198,8 +237,8 @@ func ImageResponseToChatResponse(resp *dto.ImageResponse, model string, id strin
 }
 
 func ImageResponseToResponsesResponse(resp *dto.ImageResponse, model string, id string, itemID string, fallbackPromptTokens int) (map[string]any, *dto.Usage, error) {
-	image, ok := FirstImageData(resp)
-	if !ok {
+	images := ImageDataItems(resp)
+	if len(images) == 0 {
 		return nil, nil, errors.New("image response does not contain generated image data")
 	}
 
@@ -209,14 +248,21 @@ func ImageResponseToResponsesResponse(resp *dto.ImageResponse, model string, id 
 		created = time.Now().Unix()
 	}
 
-	output := imageOutputItem(image, resp, itemID, "completed")
+	output := make([]map[string]any, 0, len(images))
+	for i, image := range images {
+		currentItemID := itemID
+		if len(images) > 1 {
+			currentItemID = fmt.Sprintf("%s_%d", itemID, i)
+		}
+		output = append(output, imageOutputItem(image, resp, currentItemID, "completed"))
+	}
 	response := map[string]any{
 		"id":                  id,
 		"object":              "response",
 		"created_at":          created,
 		"status":              "completed",
 		"model":               model,
-		"output":              []map[string]any{output},
+		"output":              output,
 		"parallel_tool_calls": false,
 		"usage":               ResponsesUsageMap(usage),
 	}
@@ -273,6 +319,8 @@ func imageOutputItem(image dto.ImageData, resp *dto.ImageResponse, itemID string
 	}
 	if image.B64Json != "" {
 		item["result"] = image.B64Json
+	} else if image.Url != "" {
+		item["result"] = image.Url
 	}
 	if image.RevisedPrompt != "" {
 		item["revised_prompt"] = image.RevisedPrompt

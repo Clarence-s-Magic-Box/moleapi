@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -157,5 +158,22 @@ func TestReadImageResponseResolvesAsyncTask(t *testing.T) {
 	}
 	if !strings.Contains(string(body), `"url":"https://example.com/generated.png"`) {
 		t.Fatalf("expected resolved image response body, got %s", string(body))
+	}
+}
+
+func TestReadImageResponsePricesActualImageCount(t *testing.T) {
+	c, _, resp, info := setupImageCompatStreamTest(`{"created":123,"data":[{"url":"https://example.com/a.png"},{"url":"https://example.com/b.png"}]}`)
+	resp.Header = http.Header{"Content-Type": []string{"application/json"}}
+	info.PriceData = types.PriceData{UsePrice: true}
+
+	imageResp, _, newAPIError := readImageResponse(c, info, resp)
+	if newAPIError != nil {
+		t.Fatalf("unexpected error: %v", newAPIError)
+	}
+	if len(imageResp.Data) != 2 {
+		t.Fatalf("unexpected image response: %+v", imageResp)
+	}
+	if got := info.PriceData.OtherRatios["n"]; got != 2 {
+		t.Fatalf("expected actual image count pricing ratio 2, got %v", got)
 	}
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -76,6 +77,23 @@ func TestOpenaiHandlerWithUsageAcceptsImageResponseWithData(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), `"b64_json":"abc"`) {
 		t.Fatalf("expected successful image response body, got %q", recorder.Body.String())
+	}
+}
+
+func TestOpenaiHandlerWithUsagePricesActualImageCount(t *testing.T) {
+	c, _, resp, info := setupImageUsageHandlerTest(`{"created":123,"data":[{"url":"https://example.com/a.png"},{"url":"https://example.com/b.png"}],"usage":{"input_tokens":3,"output_tokens":9,"total_tokens":12}}`)
+	info.PriceData = types.PriceData{UsePrice: true}
+
+	usage, newAPIError := OpenaiHandlerWithUsage(c, info, resp)
+
+	if newAPIError != nil {
+		t.Fatalf("unexpected error: %v", newAPIError)
+	}
+	if usage == nil {
+		t.Fatal("expected usage")
+	}
+	if got := info.PriceData.OtherRatios["n"]; got != 2 {
+		t.Fatalf("expected actual image count pricing ratio 2, got %v", got)
 	}
 }
 

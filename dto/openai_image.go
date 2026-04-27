@@ -151,10 +151,8 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 		}
 	}
 
-	// n is NOT included here; it is handled via OtherRatio("n") in
-	// image_handler.go (default) or channel adaptors (actual count).
-	// Including n here caused double-counting for channels that also
-	// set OtherRatio("n") (e.g. Ali/Bailian).
+	// n is NOT included here; successful handlers apply the actual generated
+	// image count after the upstream response is parsed.
 	return &types.TokenCountMeta{
 		CombineText:     i.Prompt,
 		MaxTokens:       1584,
