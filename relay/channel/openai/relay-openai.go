@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -200,6 +201,7 @@ func OaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
 
+	imageReq, _ := info.Request.(*dto.ImageRequest)
 	usage := &dto.Usage{}
 	completedImageCount := 0
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
@@ -214,10 +216,14 @@ func OaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 			return
 		}
 		if event.Type == "image_generation.completed" {
-			usage = service.ImageUsageToUsage(event.Usage, info.GetEstimatePromptTokens())
 			if strings.TrimSpace(event.B64Json) != "" {
 				completedImageCount++
 			}
+			outputFallback := 0
+			if completedImageCount > 0 {
+				outputFallback, _ = service.GPTImage2OutputTokensForRequest(imageReq, completedImageCount)
+			}
+			usage = service.ImageUsageToUsageWithOutputFallback(event.Usage, info.GetEstimatePromptTokens(), outputFallback)
 		}
 	})
 	helper.Done(c)
@@ -616,7 +622,19 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	}
 
 	if info != nil && (info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits) {
-		asyncImageResp, resolvedBody, ok, err := service.ResolveAsyncImageTaskResponse(c.Request.Context(), responseBody, service.AsyncImageTaskPollOptions{
+		imageReq, _ := info.Request.(*dto.ImageRequest)
+		submitBodies := [][]byte{responseBody}
+		if _, isAsync, err := service.ExtractAsyncImageTaskID(responseBody); err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		} else if isAsync {
+			additionalBodies, newAPIError := submitAdditionalAsyncImageTaskBodies(c, info, imageReq)
+			if newAPIError != nil {
+				return nil, newAPIError
+			}
+			submitBodies = append(submitBodies, additionalBodies...)
+		}
+		asyncResolved := false
+		asyncImageResp, resolvedBody, ok, err := service.ResolveAsyncImageTaskResponses(c.Request.Context(), submitBodies, service.AsyncImageTaskPollOptions{
 			BaseURL: info.ChannelBaseUrl,
 			APIKey:  info.ApiKey,
 			Proxy:   info.ChannelSetting.Proxy,
@@ -625,17 +643,36 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 			if err != nil {
 				return nil, asyncImageTaskNewAPIError(err)
 			}
+			asyncResolved = true
+			service.ApplyImageUsageOutputTokenFallback(asyncImageResp, imageReq, info.GetEstimatePromptTokens())
 			responseBody = resolvedBody
-			usageResp.Usage = *service.ImageUsageToUsage(asyncImageResp.Usage, info.GetEstimatePromptTokens())
 		}
 		var imageResp dto.ImageResponse
 		if err := common.Unmarshal(responseBody, &imageResp); err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}
+		if asyncResolved && asyncImageResp != nil {
+			imageResp = *asyncImageResp
+		}
+		service.ApplyImageUsageOutputTokenFallback(&imageResp, imageReq, info.GetEstimatePromptTokens())
 		if _, ok := service.FirstImageData(&imageResp); !ok {
 			return nil, types.NewOpenAIError(fmt.Errorf("image response does not contain generated image data"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}
 		service.ApplyImageResultCountPricing(info, &imageResp)
+		if imageResp.Usage != nil {
+			usageResp.Usage = *service.ImageUsageToUsage(imageResp.Usage, info.GetEstimatePromptTokens())
+			responseBody, err = common.Marshal(&imageResp)
+			if err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
+			}
+		} else if asyncResolved {
+			imageResp.Usage = service.ImageUsageToUsage(nil, info.GetEstimatePromptTokens())
+			usageResp.Usage = *imageResp.Usage
+			responseBody, err = common.Marshal(&imageResp)
+			if err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
+			}
+		}
 	}
 
 	// 写入新的 response body
@@ -657,6 +694,77 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	}
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 	return &usageResp.Usage, nil
+}
+
+func submitAdditionalAsyncImageTaskBodies(c *gin.Context, info *relaycommon.RelayInfo, imageReq *dto.ImageRequest) ([][]byte, *types.NewAPIError) {
+	if info == nil || imageReq == nil {
+		return nil, nil
+	}
+	additionalCount := service.RequestedImageCount(imageReq) - 1
+	if additionalCount <= 0 {
+		return nil, nil
+	}
+
+	adaptor := &Adaptor{}
+	adaptor.Init(info)
+	bodies := make([][]byte, 0, additionalCount)
+	for i := 0; i < additionalCount; i++ {
+		body, newAPIError := submitSingleAsyncImageTask(c, info, adaptor, service.ImageRequestWithCount(imageReq, 1))
+		if newAPIError != nil {
+			return nil, newAPIError
+		}
+		bodies = append(bodies, body)
+	}
+	return bodies, nil
+}
+
+func submitSingleAsyncImageTask(c *gin.Context, info *relaycommon.RelayInfo, adaptor *Adaptor, imageReq *dto.ImageRequest) ([]byte, *types.NewAPIError) {
+	convertedRequest, err := adaptor.ConvertImageRequest(c, info, *imageReq)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+
+	var requestBody io.Reader
+	switch v := convertedRequest.(type) {
+	case io.Reader:
+		requestBody = v
+	default:
+		jsonData, err := common.Marshal(convertedRequest)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+		jsonData, err = relaycommon.RemoveDisabledFields(jsonData, info.ChannelOtherSettings, info.ChannelSetting.PassThroughBodyEnabled)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+		if len(info.ParamOverride) > 0 {
+			jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
+			if err != nil {
+				return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+		}
+		requestBody = bytes.NewBuffer(jsonData)
+	}
+
+	rawResp, err := adaptor.DoRequest(c, info, requestBody)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+	}
+	httpResp, ok := rawResp.(*http.Response)
+	if !ok || httpResp == nil {
+		return nil, types.NewOpenAIError(nil, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+	}
+	defer service.CloseResponseBodyGracefully(httpResp)
+	if httpResp.StatusCode != http.StatusOK {
+		newAPIError := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
+		service.ResetStatusCode(newAPIError, c.GetString("status_code_mapping"))
+		return nil, newAPIError
+	}
+	body, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+	}
+	return body, nil
 }
 
 func asyncImageTaskNewAPIError(err error) *types.NewAPIError {

@@ -39,9 +39,9 @@ func chatCompletionsViaImageGeneration(c *gin.Context, info *relaycommon.RelayIn
 		return nil, newAPIError
 	}
 	if imageReq.IsStream(c) || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream") {
-		return imageStreamToChatCompletions(c, info, httpResp, imageReq.Model)
+		return imageStreamToChatCompletions(c, info, httpResp, imageReq.Model, imageReq)
 	}
-	return imageResponseToChatCompletions(c, info, httpResp, imageReq.Model)
+	return imageResponseToChatCompletions(c, info, httpResp, imageReq.Model, adaptor, imageReq)
 }
 
 func responsesViaImageGeneration(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request *dto.OpenAIResponsesRequest) (*dto.Usage, *types.NewAPIError) {
@@ -58,9 +58,9 @@ func responsesViaImageGeneration(c *gin.Context, info *relaycommon.RelayInfo, ad
 		return nil, newAPIError
 	}
 	if imageReq.IsStream(c) || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream") {
-		return imageStreamToResponses(c, info, httpResp, imageReq.Model)
+		return imageStreamToResponses(c, info, httpResp, imageReq.Model, imageReq)
 	}
-	return imageResponseToResponses(c, info, httpResp, imageReq.Model)
+	return imageResponseToResponses(c, info, httpResp, imageReq.Model, adaptor, imageReq)
 }
 
 func doImageGenerationRequest(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, imageReq *dto.ImageRequest) (*http.Response, *types.NewAPIError) {
@@ -127,10 +127,10 @@ func doImageGenerationRequest(c *gin.Context, info *relaycommon.RelayInfo, adapt
 	return httpResp, nil
 }
 
-func imageResponseToChatCompletions(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, model string) (*dto.Usage, *types.NewAPIError) {
+func imageResponseToChatCompletions(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, model string, adaptor channel.Adaptor, imageReq *dto.ImageRequest) (*dto.Usage, *types.NewAPIError) {
 	defer service.CloseResponseBodyGracefully(resp)
 
-	imageResp, body, newAPIError := readImageResponse(c, info, resp)
+	imageResp, body, newAPIError := readImageResponse(c, info, resp, adaptor, imageReq)
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
@@ -147,10 +147,10 @@ func imageResponseToChatCompletions(c *gin.Context, info *relaycommon.RelayInfo,
 	return usage, nil
 }
 
-func imageResponseToResponses(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, model string) (*dto.Usage, *types.NewAPIError) {
+func imageResponseToResponses(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, model string, adaptor channel.Adaptor, imageReq *dto.ImageRequest) (*dto.Usage, *types.NewAPIError) {
 	defer service.CloseResponseBodyGracefully(resp)
 
-	imageResp, body, newAPIError := readImageResponse(c, info, resp)
+	imageResp, body, newAPIError := readImageResponse(c, info, resp, adaptor, imageReq)
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
@@ -167,7 +167,7 @@ func imageResponseToResponses(c *gin.Context, info *relaycommon.RelayInfo, resp 
 	return usage, nil
 }
 
-func imageStreamToChatCompletions(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, model string) (*dto.Usage, *types.NewAPIError) {
+func imageStreamToChatCompletions(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, model string, imageReq *dto.ImageRequest) (*dto.Usage, *types.NewAPIError) {
 	if resp == nil || resp.Body == nil {
 		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
@@ -253,8 +253,8 @@ func imageStreamToChatCompletions(c *gin.Context, info *relaycommon.RelayInfo, r
 			sr.Stop(streamErr)
 			return
 		}
-		usage = service.ImageUsageToUsage(event.Usage, info.GetEstimatePromptTokens())
 		completedImageCount++
+		usage = service.ImageUsageToUsageWithOutputFallback(event.Usage, info.GetEstimatePromptTokens(), imageOutputTokenFallback(imageReq, completedImageCount))
 		content := service.ImageMarkdownContent(dto.ImageData{B64Json: event.B64Json}, event.OutputFormat)
 		if !sendContent(content) {
 			sr.Stop(streamErr)
@@ -287,7 +287,7 @@ func imageStreamToChatCompletions(c *gin.Context, info *relaycommon.RelayInfo, r
 	return usage, nil
 }
 
-func imageStreamToResponses(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, model string) (*dto.Usage, *types.NewAPIError) {
+func imageStreamToResponses(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, model string, imageReq *dto.ImageRequest) (*dto.Usage, *types.NewAPIError) {
 	if resp == nil || resp.Body == nil {
 		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
@@ -388,8 +388,8 @@ func imageStreamToResponses(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 				sr.Stop(streamErr)
 				return
 			}
-			usage = service.ImageUsageToUsage(event.Usage, info.GetEstimatePromptTokens())
 			completedImageCount++
+			usage = service.ImageUsageToUsageWithOutputFallback(event.Usage, info.GetEstimatePromptTokens(), imageOutputTokenFallback(imageReq, completedImageCount))
 			outputItem := service.ImageOutputItemFromStream(event, itemID, "completed")
 			if !sendEvent(dto.ResponsesOutputTypeItemDone, map[string]any{
 				"output_index": 0,
@@ -439,13 +439,23 @@ func updateImageCompatPromptEstimate(c *gin.Context, info *relaycommon.RelayInfo
 	info.SetEstimatePromptTokens(tokens)
 }
 
-func readImageResponse(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.ImageResponse, []byte, *types.NewAPIError) {
+func readImageResponse(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, adaptor channel.Adaptor, imageReq *dto.ImageRequest) (*dto.ImageResponse, []byte, *types.NewAPIError) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 	if info != nil {
-		imageResp, resolvedBody, ok, err := service.ResolveAsyncImageTaskResponse(c.Request.Context(), body, service.AsyncImageTaskPollOptions{
+		submitBodies := [][]byte{body}
+		if _, isAsync, err := service.ExtractAsyncImageTaskID(body); err != nil {
+			return nil, nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		} else if isAsync {
+			additionalBodies, newAPIError := submitAdditionalAsyncImageTaskBodies(c, info, adaptor, imageReq)
+			if newAPIError != nil {
+				return nil, nil, newAPIError
+			}
+			submitBodies = append(submitBodies, additionalBodies...)
+		}
+		imageResp, _, ok, err := service.ResolveAsyncImageTaskResponses(c.Request.Context(), submitBodies, service.AsyncImageTaskPollOptions{
 			BaseURL: info.ChannelBaseUrl,
 			APIKey:  info.ApiKey,
 			Proxy:   info.ChannelSetting.Proxy,
@@ -454,16 +464,61 @@ func readImageResponse(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 			if err != nil {
 				return nil, nil, asyncImageTaskNewAPIError(err)
 			}
+			service.ApplyImageUsageOutputTokenFallback(imageResp, imageReq, info.GetEstimatePromptTokens())
 			service.ApplyImageResultCountPricing(info, imageResp)
-			return imageResp, resolvedBody, nil
+			body, err := common.Marshal(imageResp)
+			if err != nil {
+				return nil, nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
+			}
+			return imageResp, body, nil
 		}
 	}
 	var imageResp dto.ImageResponse
 	if err := common.Unmarshal(body, &imageResp); err != nil {
 		return nil, nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	if info != nil {
+		service.ApplyImageUsageOutputTokenFallback(&imageResp, imageReq, info.GetEstimatePromptTokens())
+		body, err = common.Marshal(&imageResp)
+		if err != nil {
+			return nil, nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
+		}
+	}
 	service.ApplyImageResultCountPricing(info, &imageResp)
 	return &imageResp, body, nil
+}
+
+func submitAdditionalAsyncImageTaskBodies(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, imageReq *dto.ImageRequest) ([][]byte, *types.NewAPIError) {
+	if adaptor == nil || imageReq == nil {
+		return nil, nil
+	}
+	additionalCount := service.RequestedImageCount(imageReq) - 1
+	if additionalCount <= 0 {
+		return nil, nil
+	}
+
+	bodies := make([][]byte, 0, additionalCount)
+	for i := 0; i < additionalCount; i++ {
+		httpResp, newAPIError := doImageGenerationRequest(c, info, adaptor, service.ImageRequestWithCount(imageReq, 1))
+		if newAPIError != nil {
+			return nil, newAPIError
+		}
+		body, err := io.ReadAll(httpResp.Body)
+		service.CloseResponseBodyGracefully(httpResp)
+		if err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+		}
+		bodies = append(bodies, body)
+	}
+	return bodies, nil
+}
+
+func imageOutputTokenFallback(imageReq *dto.ImageRequest, imageCount int) int {
+	outputTokens, ok := service.GPTImage2OutputTokensForRequest(imageReq, imageCount)
+	if !ok {
+		return 0
+	}
+	return outputTokens
 }
 
 func asyncImageTaskNewAPIError(err error) *types.NewAPIError {
