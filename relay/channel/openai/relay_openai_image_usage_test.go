@@ -119,6 +119,30 @@ func TestOpenaiHandlerWithUsageAcceptsImageResponseWithData(t *testing.T) {
 	}
 }
 
+func TestOpenAIImageDoResponseUsesJSONHandlerForNonEventStreamResponse(t *testing.T) {
+	c, recorder, resp, info := setupImageUsageHandlerTest(`{"created":123,"data":[{"url":"https://example.com/a.png"}],"usage":{"input_tokens":3,"output_tokens":9,"total_tokens":12}}`)
+	resp.Header = http.Header{"Content-Type": []string{"application/json"}}
+	info.IsStream = true
+
+	adaptor := &Adaptor{}
+	usageAny, newAPIError := adaptor.DoResponse(c, resp, info)
+
+	if newAPIError != nil {
+		t.Fatalf("unexpected error: %v", newAPIError)
+	}
+	usage, ok := usageAny.(*dto.Usage)
+	if !ok || usage.TotalTokens != 12 {
+		t.Fatalf("unexpected usage: %#v", usageAny)
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, "https://example.com/a.png") {
+		t.Fatalf("expected JSON image response body, got %s", body)
+	}
+	if strings.Contains(body, "[DONE]") {
+		t.Fatalf("non-event-stream image response should not be treated as stream, got %s", body)
+	}
+}
+
 func TestOpenaiHandlerWithUsagePricesActualImageCount(t *testing.T) {
 	c, _, resp, info := setupImageUsageHandlerTest(`{"created":123,"data":[{"url":"https://example.com/a.png"},{"url":"https://example.com/b.png"}],"usage":{"input_tokens":3,"output_tokens":9,"total_tokens":12}}`)
 	info.PriceData = types.PriceData{UsePrice: true}

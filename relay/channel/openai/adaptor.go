@@ -613,7 +613,7 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	case relayconstant.RelayModeAudioTranscription:
 		err, usage = OpenaiSTTHandler(c, resp, info, a.ResponseFormat)
 	case relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits:
-		if info.IsStream {
+		if info.IsStream && resp != nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Type"))), "text/event-stream") {
 			usage, err = OaiImageStreamHandler(c, info, resp)
 		} else {
 			usage, err = OpenaiHandlerWithUsage(c, info, resp)

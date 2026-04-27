@@ -600,7 +600,7 @@ func readImageResponse(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 	}
 	var imageResp dto.ImageResponse
 	if err := common.Unmarshal(body, &imageResp); err != nil {
-		return nil, nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		return nil, nil, imageBadResponseBodyError(body, err)
 	}
 	if info != nil {
 		service.ApplyImageUsageOutputTokenFallback(&imageResp, imageReq, info.GetEstimatePromptTokens())
@@ -611,6 +611,13 @@ func readImageResponse(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 	}
 	service.ApplyImageResultCountPricing(info, &imageResp)
 	return &imageResp, body, nil
+}
+
+func imageBadResponseBodyError(body []byte, err error) *types.NewAPIError {
+	if strings.HasPrefix(strings.TrimSpace(string(body)), "<") {
+		return types.NewOpenAIError(fmt.Errorf("upstream returned non-JSON image response"), types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+	return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 }
 
 func submitAdditionalAsyncImageTaskBodies(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, imageReq *dto.ImageRequest) ([][]byte, *types.NewAPIError) {
