@@ -26,6 +26,7 @@ func chatCompletionsViaImageGeneration(c *gin.Context, info *relaycommon.RelayIn
 		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
 	applyImageOptionsFromRequestBody(c, imageReq)
+	updateImageCompatPromptEstimate(c, info, imageReq)
 	if imageReq.Stream != nil && *imageReq.Stream {
 		// Chat Completions is append-only text streaming, so partial images would
 		// become permanent extra images in the final message. Stream only the final image.
@@ -49,6 +50,7 @@ func responsesViaImageGeneration(c *gin.Context, info *relaycommon.RelayInfo, ad
 	}
 	applyImageOptionsFromRequestBody(c, imageReq)
 	service.ApplyImageGenerationToolOptions(request.Tools, imageReq)
+	updateImageCompatPromptEstimate(c, info, imageReq)
 
 	httpResp, newAPIError := doImageGenerationRequest(c, info, adaptor, imageReq)
 	if newAPIError != nil {
@@ -244,6 +246,11 @@ func imageStreamToChatCompletions(c *gin.Context, info *relaycommon.RelayInfo, r
 		if event.Type != "image_generation.completed" {
 			return
 		}
+		if strings.TrimSpace(event.B64Json) == "" {
+			streamErr = types.NewOpenAIError(fmt.Errorf("image stream completed without image data"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			sr.Stop(streamErr)
+			return
+		}
 		usage = service.ImageUsageToUsage(event.Usage, info.GetEstimatePromptTokens())
 		content := service.ImageMarkdownContent(dto.ImageData{B64Json: event.B64Json}, event.OutputFormat)
 		if !sendContent(content) {
@@ -262,7 +269,7 @@ func imageStreamToChatCompletions(c *gin.Context, info *relaycommon.RelayInfo, r
 		return nil, streamErr
 	}
 	if !sentFinalImage {
-		usage = service.ImageUsageToUsage(nil, info.GetEstimatePromptTokens())
+		return nil, types.NewOpenAIError(fmt.Errorf("image stream ended without completed image data"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	if !sentStop && !sendStop() {
 		return nil, streamErr
@@ -371,6 +378,11 @@ func imageStreamToResponses(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 				return
 			}
 		case "image_generation.completed":
+			if strings.TrimSpace(event.B64Json) == "" {
+				streamErr = types.NewOpenAIError(fmt.Errorf("image stream completed without image data"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+				sr.Stop(streamErr)
+				return
+			}
 			usage = service.ImageUsageToUsage(event.Usage, info.GetEstimatePromptTokens())
 			outputItem := service.ImageOutputItemFromStream(event, itemID, "completed")
 			if !sendEvent(dto.ResponsesOutputTypeItemDone, map[string]any{
@@ -404,9 +416,20 @@ func imageStreamToResponses(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		return nil, streamErr
 	}
 	if !sentCompleted {
-		usage = service.ImageUsageToUsage(nil, info.GetEstimatePromptTokens())
+		return nil, types.NewOpenAIError(fmt.Errorf("image stream ended without completed image data"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	return usage, nil
+}
+
+func updateImageCompatPromptEstimate(c *gin.Context, info *relaycommon.RelayInfo, imageReq *dto.ImageRequest) {
+	if c == nil || info == nil || imageReq == nil {
+		return
+	}
+	tokens, err := service.EstimateRequestToken(c, imageReq.GetTokenCountMeta(), info)
+	if err != nil {
+		return
+	}
+	info.SetEstimatePromptTokens(tokens)
 }
 
 func readImageResponse(resp *http.Response) (*dto.ImageResponse, []byte, *types.NewAPIError) {

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/dto"
@@ -52,6 +53,51 @@ func TestChatCompletionsRequestToImageRequest(t *testing.T) {
 	}
 	if string(imageReq.PartialImages) != "3" {
 		t.Fatalf("unexpected partial_images: %s", string(imageReq.PartialImages))
+	}
+}
+
+func TestChatCompletionsRequestToImageRequestStripsGeneratedImagePayloads(t *testing.T) {
+	generatedImage := "![generated image](data:image/png;base64," + strings.Repeat("a", 12000) + ")"
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-image-2",
+		Messages: []dto.Message{
+			{Role: "system", Content: "Use a clean editorial style."},
+			{Role: "assistant", Content: generatedImage},
+			{Role: "user", Content: "Make the next image use a blue background."},
+		},
+	}
+
+	imageReq, err := ChatCompletionsRequestToImageRequest(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Contains(imageReq.Prompt, "data:image") || strings.Contains(imageReq.Prompt, "base64") {
+		t.Fatalf("prompt should not contain generated image payload: %q", imageReq.Prompt)
+	}
+	if !strings.Contains(imageReq.Prompt, "Use a clean editorial style.") || !strings.Contains(imageReq.Prompt, "Make the next image use a blue background.") {
+		t.Fatalf("prompt should retain useful text: %q", imageReq.Prompt)
+	}
+}
+
+func TestImageCompatTokenCountMetaUsesConvertedPromptOnly(t *testing.T) {
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-image-2",
+		Messages: []dto.Message{
+			{Role: "assistant", Content: "data:image/webp;base64," + strings.Repeat("b", 10000)},
+			{Role: "user", Content: "Draw a small red cube."},
+		},
+	}
+
+	meta, ok := ImageCompatTokenCountMeta(req, "gpt-image-2")
+	if !ok {
+		t.Fatal("expected image compatibility token meta")
+	}
+	if strings.Contains(meta.CombineText, "data:image") || strings.Contains(meta.CombineText, strings.Repeat("b", 100)) {
+		t.Fatalf("token meta should not contain generated image payload: %q", meta.CombineText)
+	}
+	if meta.CombineText != "Draw a small red cube." {
+		t.Fatalf("unexpected token meta text: %q", meta.CombineText)
 	}
 }
 

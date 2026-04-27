@@ -4,18 +4,54 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/types"
 )
 
 const gptImage2ModelPrefix = "gpt-image-2"
 
+var (
+	imagePromptMarkdownDataURLPattern = regexp.MustCompile(`!\[[^\]\r\n]*\]\(\s*data:image/[A-Za-z0-9.+-]+;base64,[^)]+\)`)
+	imagePromptDataURLPattern         = regexp.MustCompile(`data:image/[A-Za-z0-9.+-]+;base64,[-A-Za-z0-9+/_=]+`)
+)
+
 func IsGPTImage2Model(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
 	return model == gptImage2ModelPrefix || strings.HasPrefix(model, gptImage2ModelPrefix+"-")
+}
+
+func ImageCompatTokenCountMeta(req dto.Request, model string) (*types.TokenCountMeta, bool) {
+	if req == nil {
+		return nil, false
+	}
+
+	switch r := req.(type) {
+	case *dto.GeneralOpenAIRequest:
+		if !IsGPTImage2Model(model) && !IsGPTImage2Model(r.Model) {
+			return nil, false
+		}
+		imageReq, err := ChatCompletionsRequestToImageRequest(r)
+		if err != nil {
+			return nil, false
+		}
+		return imageReq.GetTokenCountMeta(), true
+	case *dto.OpenAIResponsesRequest:
+		if !IsGPTImage2Model(model) && !IsGPTImage2Model(r.Model) {
+			return nil, false
+		}
+		imageReq, err := ResponsesRequestToImageRequest(r)
+		if err != nil {
+			return nil, false
+		}
+		return imageReq.GetTokenCountMeta(), true
+	default:
+		return nil, false
+	}
 }
 
 func ChatCompletionsRequestToImageRequest(req *dto.GeneralOpenAIRequest) (*dto.ImageRequest, error) {
@@ -348,12 +384,21 @@ func textPartsFromAny(value any) []string {
 func compactStrings(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {
+		value = stripImagePromptGeneratedPayloads(value)
 		value = strings.TrimSpace(value)
 		if value != "" {
 			out = append(out, value)
 		}
 	}
 	return out
+}
+
+func stripImagePromptGeneratedPayloads(value string) string {
+	if value == "" {
+		return value
+	}
+	value = imagePromptMarkdownDataURLPattern.ReplaceAllString(value, "")
+	return imagePromptDataURLPattern.ReplaceAllString(value, "")
 }
 
 func ApplyImageGenerationToolOptions(raw []byte, imageReq *dto.ImageRequest) {

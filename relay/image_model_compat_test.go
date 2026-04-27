@@ -65,6 +65,40 @@ func TestImageStreamToChatCompletionsUsesFinalImageOnly(t *testing.T) {
 	}
 }
 
+func TestImageStreamToChatCompletionsRejectsMissingCompletedImage(t *testing.T) {
+	sse := strings.Join([]string{
+		`data: {"type":"image_generation.partial_image","b64_json":"partial","partial_image_index":0}`,
+		`data: [DONE]`,
+		"",
+	}, "\n")
+	c, _, resp, info := setupImageCompatStreamTest(sse)
+
+	usage, newAPIError := imageStreamToChatCompletions(c, info, resp, "gpt-image-2")
+	if newAPIError == nil {
+		t.Fatal("expected error for stream without completed image")
+	}
+	if usage != nil {
+		t.Fatalf("expected no usage for failed image stream, got %+v", usage)
+	}
+}
+
+func TestImageStreamToChatCompletionsRejectsCompletedEventWithoutImage(t *testing.T) {
+	sse := strings.Join([]string{
+		`data: {"type":"image_generation.completed","output_format":"png","usage":{"input_tokens":3,"output_tokens":9,"total_tokens":12}}`,
+		`data: [DONE]`,
+		"",
+	}, "\n")
+	c, _, resp, info := setupImageCompatStreamTest(sse)
+
+	usage, newAPIError := imageStreamToChatCompletions(c, info, resp, "gpt-image-2")
+	if newAPIError == nil {
+		t.Fatal("expected error for completed image stream without image data")
+	}
+	if usage != nil {
+		t.Fatalf("expected no usage for failed image stream, got %+v", usage)
+	}
+}
+
 func TestImageStreamToResponsesEmitsPartialAndCompletedEvents(t *testing.T) {
 	sse := strings.Join([]string{
 		`data: {"type":"image_generation.partial_image","b64_json":"partial","partial_image_index":0,"output_format":"webp"}`,
