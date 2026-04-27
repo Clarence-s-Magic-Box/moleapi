@@ -86,6 +86,39 @@ func TestResolveAsyncImageTaskResponsesCombinesCompletedTasks(t *testing.T) {
 	}
 }
 
+func TestResolveAsyncImageTaskResponsePollsAtTimeoutBoundary(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		if requests == 1 {
+			_, _ = w.Write([]byte(`{"code":200,"data":{"id":"task_123","status":"processing"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"code":200,"data":{"id":"task_123","status":"completed","created":10,"completed":20,"result":{"images":[{"url":["https://example.com/final.png"],"expires_at":30}]}}}`))
+	}))
+	defer server.Close()
+
+	imageResp, _, ok, err := ResolveAsyncImageTaskResponse(context.Background(), []byte(`{"code":200,"data":[{"status":"submitted","task_id":"task_123"}]}`), AsyncImageTaskPollOptions{
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
+		Interval:   100 * time.Millisecond,
+		Timeout:    20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected async task response to be detected")
+	}
+	if requests != 2 {
+		t.Fatalf("expected a final poll at the timeout boundary, got %d requests", requests)
+	}
+	if len(imageResp.Data) != 1 || imageResp.Data[0].Url != "https://example.com/final.png" {
+		t.Fatalf("unexpected image response: %+v", imageResp)
+	}
+}
+
 func TestResolveAsyncImageTaskResponseFailed(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

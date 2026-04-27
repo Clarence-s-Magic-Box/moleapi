@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	openaichannel "github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -66,6 +67,87 @@ func TestImageStreamToChatCompletionsUsesFinalImageOnly(t *testing.T) {
 	}
 	if !strings.Contains(body, "[DONE]") {
 		t.Fatalf("expected stream terminator, got: %s", body)
+	}
+}
+
+func TestChatCompletionsViaImageGenerationStreamsAsyncJSONResponse(t *testing.T) {
+	service.InitHttpClient()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/images/generations":
+			_, _ = w.Write([]byte(`{"code":200,"data":[{"status":"submitted","task_id":"task_123"}]}`))
+		case "/v1/tasks/task_123":
+			_, _ = w.Write([]byte(`{"code":200,"data":{"id":"task_123","status":"completed","created":10,"completed":20,"result":{"images":[{"url":["https://example.com/generated.png"],"expires_at":30}]}}}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	requestBody := `{"model":"gpt-image-2","stream":true,"messages":[{"role":"user","content":"draw"}]}`
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/pg/chat/completions", strings.NewReader(requestBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(common.RequestIdKey, "test")
+	stream := true
+	req := &dto.GeneralOpenAIRequest{
+		Model:  "gpt-image-2",
+		Stream: &stream,
+		Messages: []dto.Message{
+			{Role: "user", Content: "draw"},
+		},
+	}
+	info := &relaycommon.RelayInfo{
+		RelayMode:       relayconstant.RelayModeChatCompletions,
+		OriginModelName: "gpt-image-2",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelBaseUrl:    server.URL,
+			UpstreamModelName: "gpt-image-2",
+		},
+		ShouldIncludeUsage: true,
+	}
+	adaptor := &openaichannel.Adaptor{}
+	adaptor.Init(info)
+
+	usage, newAPIError := chatCompletionsViaImageGeneration(c, info, adaptor, req)
+	if newAPIError != nil {
+		t.Fatalf("unexpected error: %v", newAPIError)
+	}
+	if usage == nil || usage.TotalTokens == 0 {
+		t.Fatalf("expected usage, got %+v", usage)
+	}
+	body := recorder.Body.String()
+	for _, want := range []string{
+		"chat.completion.chunk",
+		"https://example.com/generated.png",
+		"[DONE]",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected %q in stream body, got: %s", want, body)
+		}
+	}
+	if got := recorder.Header().Get("Content-Type"); !strings.Contains(got, "text/event-stream") {
+		t.Fatalf("expected event-stream response, got %q", got)
+	}
+}
+
+func TestAsyncImageTaskErrorSkipsRetry(t *testing.T) {
+	newAPIError := asyncImageTaskNewAPIError(&service.AsyncImageTaskError{
+		StatusCode: http.StatusGatewayTimeout,
+		OpenAIError: types.OpenAIError{
+			Message: "async image task timed out",
+			Type:    "upstream_task_timeout",
+			Code:    "task_timeout",
+		},
+	})
+
+	if newAPIError == nil {
+		t.Fatal("expected error")
+	}
+	if !types.IsSkipRetryError(newAPIError) {
+		t.Fatal("expected async task error to skip retry")
 	}
 }
 

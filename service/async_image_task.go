@@ -17,7 +17,7 @@ import (
 
 const (
 	defaultAsyncImageTaskPollInterval = 5 * time.Second
-	defaultAsyncImageTaskPollTimeout  = 300 * time.Second
+	defaultAsyncImageTaskPollTimeout  = 360 * time.Second
 )
 
 type AsyncImageTaskPollOptions struct {
@@ -110,7 +110,8 @@ func ResolveAsyncImageTaskResponse(ctx context.Context, submitBody []byte, opts 
 			return imageResp, body, true, nil
 		}
 
-		if time.Now().Add(interval).After(deadline) {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
 			return nil, nil, true, &AsyncImageTaskError{
 				StatusCode: http.StatusGatewayTimeout,
 				OpenAIError: types.OpenAIError{
@@ -121,7 +122,11 @@ func ResolveAsyncImageTaskResponse(ctx context.Context, submitBody []byte, opts 
 			}
 		}
 
-		if err := sleepAsyncImageTaskPoll(ctx, interval); err != nil {
+		sleepFor := interval
+		if remaining < sleepFor {
+			sleepFor = remaining
+		}
+		if err := sleepAsyncImageTaskPoll(ctx, sleepFor); err != nil {
 			return nil, nil, true, err
 		}
 	}

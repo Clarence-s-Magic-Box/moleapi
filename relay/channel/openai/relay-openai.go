@@ -611,6 +611,9 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	var usageResp dto.SimpleResponse
 	err = common.Unmarshal(responseBody, &usageResp)
 	if err != nil {
+		if strings.HasPrefix(strings.TrimSpace(string(responseBody)), "<") {
+			return nil, types.NewOpenAIError(fmt.Errorf("upstream returned non-JSON response"), types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+		}
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
@@ -774,9 +777,9 @@ func asyncImageTaskNewAPIError(err error) *types.NewAPIError {
 		if statusCode == 0 {
 			statusCode = http.StatusBadGateway
 		}
-		return types.WithOpenAIError(taskErr.OpenAIError, statusCode)
+		return types.WithOpenAIError(taskErr.OpenAIError, statusCode, types.ErrOptionWithSkipRetry())
 	}
-	return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
 }
 
 func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, responseBody []byte) {

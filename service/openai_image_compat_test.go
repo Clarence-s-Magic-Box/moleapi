@@ -135,7 +135,7 @@ func TestResponsesRequestToImageRequest(t *testing.T) {
 
 func TestApplyImageOptionsFromRawPreservesApimartFields(t *testing.T) {
 	imageReq := &dto.ImageRequest{}
-	ApplyImageOptionsFromRaw([]byte(`{"resolution":"2k","image_urls":["https://example.com/ref.png"],"official_fallback":false}`), imageReq)
+	ApplyImageOptionsFromRaw([]byte(`{"resolution":"2k","image_urls":["https://example.com/ref.png"],"image":"https://example.com/ignored.png","official_fallback":false}`), imageReq)
 
 	if string(imageReq.Resolution) != `"2k"` {
 		t.Fatalf("unexpected resolution: %s", string(imageReq.Resolution))
@@ -146,6 +146,9 @@ func TestApplyImageOptionsFromRawPreservesApimartFields(t *testing.T) {
 	if imageReq.OfficialFallback == nil || *imageReq.OfficialFallback {
 		t.Fatalf("expected explicit false official_fallback, got %v", imageReq.OfficialFallback)
 	}
+	if !strings.Contains(string(imageReq.Image), "https://example.com/ignored.png") {
+		t.Fatalf("unexpected image: %s", string(imageReq.Image))
+	}
 	body, err := common.Marshal(imageReq)
 	if err != nil {
 		t.Fatalf("marshal image request: %v", err)
@@ -154,6 +157,59 @@ func TestApplyImageOptionsFromRawPreservesApimartFields(t *testing.T) {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("expected %s in marshaled request, got %s", want, string(body))
 		}
+	}
+}
+
+func TestNormalizeGPTImage2GenerationImageInputsConvertsImageToImageURLs(t *testing.T) {
+	imageReq := &dto.ImageRequest{
+		Model: "gpt-image-2",
+		Image: []byte(`[
+			{"image_url":{"url":"https://example.com/a.png"}},
+			"data:image/png;base64,abc123"
+		]`),
+	}
+
+	NormalizeGPTImage2GenerationImageInputs(imageReq)
+
+	if len(imageReq.Image) != 0 {
+		t.Fatalf("expected image field to be removed, got %s", string(imageReq.Image))
+	}
+	if !strings.Contains(string(imageReq.ImageUrls), "https://example.com/a.png") ||
+		!strings.Contains(string(imageReq.ImageUrls), "data:image/png;base64,abc123") {
+		t.Fatalf("unexpected image_urls: %s", string(imageReq.ImageUrls))
+	}
+}
+
+func TestNormalizeGPTImage2GenerationImageInputsPreservesExistingImageURLs(t *testing.T) {
+	imageReq := &dto.ImageRequest{
+		Model:     "gpt-image-2",
+		ImageUrls: []byte(`["https://example.com/ref.png"]`),
+		Image:     []byte(`"https://example.com/ignored.png"`),
+	}
+
+	NormalizeGPTImage2GenerationImageInputs(imageReq)
+
+	if len(imageReq.Image) != 0 {
+		t.Fatalf("expected image field to be removed, got %s", string(imageReq.Image))
+	}
+	if string(imageReq.ImageUrls) != `["https://example.com/ref.png"]` {
+		t.Fatalf("unexpected image_urls: %s", string(imageReq.ImageUrls))
+	}
+}
+
+func TestNormalizeGPTImage2GenerationImageInputsKeepsUnsupportedImageShape(t *testing.T) {
+	imageReq := &dto.ImageRequest{
+		Model: "gpt-image-2",
+		Image: []byte(`"file-abc123"`),
+	}
+
+	NormalizeGPTImage2GenerationImageInputs(imageReq)
+
+	if len(imageReq.ImageUrls) != 0 {
+		t.Fatalf("expected no image_urls for unsupported image value, got %s", string(imageReq.ImageUrls))
+	}
+	if string(imageReq.Image) != `"file-abc123"` {
+		t.Fatalf("expected image to remain for upstream validation, got %s", string(imageReq.Image))
 	}
 }
 

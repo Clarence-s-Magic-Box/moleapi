@@ -756,11 +756,81 @@ func applyImageOptionsFromMap(values map[string]any, imageReq *dto.ImageRequest)
 	assignRawOption(values, "moderation", &imageReq.Moderation)
 	assignRawOption(values, "resolution", &imageReq.Resolution)
 	assignRawOption(values, "image_urls", &imageReq.ImageUrls)
+	assignRawOption(values, "image", &imageReq.Image)
 	if raw, ok := values["official_fallback"]; ok {
 		if enabled, ok := raw.(bool); ok {
 			imageReq.OfficialFallback = &enabled
 		}
 	}
+}
+
+func NormalizeGPTImage2GenerationImageInputs(imageReq *dto.ImageRequest) {
+	if imageReq == nil || !IsGPTImage2Model(imageReq.Model) {
+		return
+	}
+	if len(imageReq.ImageUrls) > 0 {
+		imageReq.Image = nil
+		return
+	}
+	urls := imageURLsFromRawMessage(imageReq.Image)
+	if len(urls) == 0 {
+		return
+	}
+	raw, err := common.Marshal(urls)
+	if err != nil {
+		return
+	}
+	imageReq.ImageUrls = raw
+	imageReq.Image = nil
+}
+
+func imageURLsFromRawMessage(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var value any
+	if err := common.Unmarshal(raw, &value); err != nil {
+		return nil
+	}
+	return imageURLsFromAny(value)
+}
+
+func imageURLsFromAny(value any) []string {
+	switch v := value.(type) {
+	case string:
+		if url, ok := normalizeSupportedImageURL(v); ok {
+			return []string{url}
+		}
+	case []any:
+		var urls []string
+		for _, item := range v {
+			urls = append(urls, imageURLsFromAny(item)...)
+		}
+		return urls
+	case map[string]any:
+		for _, key := range []string{"url", "image_url", "image"} {
+			if nested, ok := v[key]; ok {
+				if urls := imageURLsFromAny(nested); len(urls) > 0 {
+					return urls
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func normalizeSupportedImageURL(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", false
+	}
+	lower := strings.ToLower(value)
+	if strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "data:image/") {
+		return value, true
+	}
+	return "", false
 }
 
 func assignRawOption(values map[string]any, key string, target *json.RawMessage) {

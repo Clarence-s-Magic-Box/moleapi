@@ -63,6 +63,43 @@ func TestOpenaiHandlerWithUsageRejectsImageResponseWithoutData(t *testing.T) {
 	}
 }
 
+func TestOpenaiHandlerWithUsageRejectsNonJSONImageResponseAsUpstreamError(t *testing.T) {
+	c, recorder, resp, info := setupImageUsageHandlerTest(`<html>bad gateway</html>`)
+
+	usage, newAPIError := OpenaiHandlerWithUsage(c, info, resp)
+
+	if newAPIError == nil {
+		t.Fatal("expected non-json image response to return an error")
+	}
+	if newAPIError.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected bad gateway status, got %d", newAPIError.StatusCode)
+	}
+	if usage != nil {
+		t.Fatalf("expected no usage for non-json response, got %+v", usage)
+	}
+	if recorder.Body.Len() != 0 {
+		t.Fatalf("non-json response should not be written as success, got %q", recorder.Body.String())
+	}
+}
+
+func TestAsyncImageTaskErrorSkipsRetry(t *testing.T) {
+	newAPIError := asyncImageTaskNewAPIError(&service.AsyncImageTaskError{
+		StatusCode: http.StatusGatewayTimeout,
+		OpenAIError: types.OpenAIError{
+			Message: "async image task timed out",
+			Type:    "upstream_task_timeout",
+			Code:    "task_timeout",
+		},
+	})
+
+	if newAPIError == nil {
+		t.Fatal("expected error")
+	}
+	if !types.IsSkipRetryError(newAPIError) {
+		t.Fatal("expected async task error to skip retry")
+	}
+}
+
 func TestOpenaiHandlerWithUsageAcceptsImageResponseWithData(t *testing.T) {
 	c, recorder, resp, info := setupImageUsageHandlerTest(`{"created":123,"data":[{"b64_json":"abc"}],"usage":{"input_tokens":3,"output_tokens":9,"total_tokens":12}}`)
 
