@@ -157,6 +157,77 @@ func TestApplyImageOptionsFromRawPreservesApimartFields(t *testing.T) {
 	}
 }
 
+func TestGPTImage2OutputTokensForRequestUsesOfficialCalculatorValues(t *testing.T) {
+	tests := []struct {
+		name   string
+		req    *dto.ImageRequest
+		count  int
+		want   int
+		wantOK bool
+	}{
+		{
+			name:   "low square",
+			req:    &dto.ImageRequest{Model: "gpt-image-2", Size: "1024x1024", Quality: "low"},
+			count:  1,
+			want:   196,
+			wantOK: true,
+		},
+		{
+			name:   "medium portrait",
+			req:    &dto.ImageRequest{Model: "gpt-image-2", Size: "1024x1536", Quality: "medium"},
+			count:  1,
+			want:   1372,
+			wantOK: true,
+		},
+		{
+			name:   "high landscape two images",
+			req:    &dto.ImageRequest{Model: "gpt-image-2", Size: "1536x1024", Quality: "high"},
+			count:  2,
+			want:   10976,
+			wantOK: true,
+		},
+		{
+			name:   "apimart ratio resolution",
+			req:    &dto.ImageRequest{Model: "gpt-image-2", Size: "16:9", Quality: "medium", Resolution: []byte(`"2k"`)},
+			count:  1,
+			want:   1413,
+			wantOK: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := GPTImage2OutputTokensForRequest(tt.req, tt.count)
+			if ok != tt.wantOK || got != tt.want {
+				t.Fatalf("expected %d/%v, got %d/%v", tt.want, tt.wantOK, got, ok)
+			}
+		})
+	}
+}
+
+func TestApplyImageUsageOutputTokenFallbackUsesActualResultCount(t *testing.T) {
+	req := &dto.ImageRequest{Model: "gpt-image-2", Size: "1024x1024", Quality: "low"}
+	resp := &dto.ImageResponse{
+		Data: []dto.ImageData{
+			{Url: "https://example.com/a.png"},
+			{Url: "https://example.com/b.png"},
+		},
+		Usage: &dto.Usage{InputTokens: 7, OutputTokens: 1, TotalTokens: 8},
+	}
+
+	ApplyImageUsageOutputTokenFallback(resp, req, 0)
+
+	if resp.Usage == nil {
+		t.Fatal("expected usage")
+	}
+	if resp.Usage.PromptTokens != 7 || resp.Usage.CompletionTokens != 392 || resp.Usage.OutputTokens != 392 {
+		t.Fatalf("unexpected usage: %+v", resp.Usage)
+	}
+	if resp.Usage.CompletionTokenDetails.ImageTokens != 392 || resp.Usage.TotalTokens != 399 {
+		t.Fatalf("unexpected token details: %+v", resp.Usage)
+	}
+}
+
 func TestImageResponseToChatResponse(t *testing.T) {
 	resp := &dto.ImageResponse{
 		Created:      123,
