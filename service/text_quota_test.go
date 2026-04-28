@@ -279,6 +279,69 @@ func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheCreationFromPromptBill
 	require.Equal(t, 3012, summary.Quota)
 }
 
+func TestCalculateTextQuotaSummarySeparatesConfiguredImageOutputBilling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-image-2",
+		PriceData: types.PriceData{
+			ModelRatio:          2.5, // $5 / 1M input tokens
+			CompletionRatio:     3,   // $15 / 1M text output tokens
+			ImageOutputRatio:    6,   // $30 / 1M image output tokens
+			ImageOutputRatioSet: true,
+			GroupRatioInfo:      types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     533,
+		CompletionTokens: 1372,
+		CompletionTokenDetails: dto.OutputTokenDetails{
+			ImageTokens: 1372,
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// (533 + 1372*6) * 2.5 = 21912.5 => 21913.
+	require.Equal(t, 1372, summary.ImageOutputTokens)
+	require.Equal(t, 21913, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryKeepsImageOutputAsCompletionWithoutImageOutputRatio(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-image-2",
+		PriceData: types.PriceData{
+			ModelRatio:      2.5, // $5 / 1M input tokens
+			CompletionRatio: 3,   // $15 / 1M output tokens
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     533,
+		CompletionTokens: 1372,
+		CompletionTokenDetails: dto.OutputTokenDetails{
+			ImageTokens: 1372,
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// No image output ratio configured: keep previous behavior.
+	// (533 + 1372*3) * 2.5 = 11622.5 => 11623.
+	require.Equal(t, 1372, summary.ImageOutputTokens)
+	require.Equal(t, 11623, summary.Quota)
+}
+
 func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

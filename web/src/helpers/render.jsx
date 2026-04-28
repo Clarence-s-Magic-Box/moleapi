@@ -1316,6 +1316,9 @@ function renderPriceSimpleCore({
   cacheCreationRatio1h = 1.0,
   image = false,
   imageRatio = 1.0,
+  imageInputTokens = 0,
+  imageOutputTokens = 0,
+  imageOutputRatio,
   isSystemPromptOverride = false,
   displayMode = 'price',
   outputMode = 'text',
@@ -1334,6 +1337,11 @@ function renderPriceSimpleCore({
     !hasSplitCacheCreation && cacheCreationTokens !== 0;
 
   const shouldShowCache = cacheTokens !== 0;
+  const shouldShowImageInput = image && imageInputTokens > 0;
+  const shouldShowImageOutput =
+    imageOutputTokens > 0 &&
+    imageOutputRatio !== undefined &&
+    imageOutputRatio !== null;
   const shouldShowCacheCreation5m =
     hasSplitCacheCreation && cacheCreationTokens5m > 0;
   const shouldShowCacheCreation1h =
@@ -1404,11 +1412,22 @@ function renderPriceSimpleCore({
         });
       }
 
-      if (image) {
+      if (shouldShowImageInput) {
         segments.push({
           tone: 'secondary',
           text: i18next.t('图片输入 {{price}} / 1M tokens', {
             price: formatCompactDisplayPrice(modelRatio * 2.0 * imageRatio),
+          }),
+        });
+      }
+
+      if (shouldShowImageOutput) {
+        segments.push({
+          tone: 'secondary',
+          text: i18next.t('图片输出 {{price}} / 1M tokens', {
+            price: formatCompactDisplayPrice(
+              modelRatio * 2.0 * imageOutputRatio,
+            ),
           }),
         });
       }
@@ -1465,11 +1484,20 @@ function renderPriceSimpleCore({
         });
       }
 
-      if (image) {
+      if (shouldShowImageInput) {
         segments.push({
           tone: 'secondary',
           text: i18next.t('图片输入: {{imageRatio}}', {
             imageRatio: imageRatio,
+          }),
+        });
+      }
+
+      if (shouldShowImageOutput) {
+        segments.push({
+          tone: 'secondary',
+          text: i18next.t('图片输出: {{imageOutputRatio}}', {
+            imageOutputRatio: imageOutputRatio,
           }),
         });
       }
@@ -1558,10 +1586,18 @@ function renderPriceSimpleCore({
       );
     }
 
-    if (image) {
+    if (shouldShowImageInput) {
       parts.push(
         i18next.t('图片输入 {{price}} / 1M tokens', {
           price: formatCompactDisplayPrice(modelRatio * 2.0 * imageRatio),
+        }),
+      );
+    }
+
+    if (shouldShowImageOutput) {
+      parts.push(
+        i18next.t('图片输出 {{price}} / 1M tokens', {
+          price: formatCompactDisplayPrice(modelRatio * 2.0 * imageOutputRatio),
         }),
       );
     }
@@ -1601,8 +1637,11 @@ function renderPriceSimpleCore({
   }
 
   // image part
-  if (image) {
+  if (shouldShowImageInput) {
     parts.push(i18next.t('图片输入: {{imageRatio}}'));
+  }
+  if (shouldShowImageOutput) {
+    parts.push(i18next.t('图片输出: {{imageOutputRatio}}'));
   }
 
   parts.push(`{{ratioType}}: {{groupRatio}}`);
@@ -1616,6 +1655,7 @@ function renderPriceSimpleCore({
     cacheCreationRatio5m: cacheCreationRatio5m,
     cacheCreationRatio1h: cacheCreationRatio1h,
     imageRatio: imageRatio,
+    imageOutputRatio: imageOutputRatio,
   });
 
   if (isSystemPromptOverride) {
@@ -1627,10 +1667,9 @@ function renderPriceSimpleCore({
 
 export function renderTaskBillingProcess(other, content) {
   if (other?.task_id != null) {
-    return renderBillingArticle(
-      [content].filter(Boolean),
-      { showReferenceNote: false },
-    );
+    return renderBillingArticle([content].filter(Boolean), {
+      showReferenceNote: false,
+    });
   }
   return renderBillingArticle([
     buildBillingText('任务预扣费（将在任务完成后按实际token重算）'),
@@ -1650,7 +1689,11 @@ export function renderModelPrice(opts) {
     cache_ratio: cacheRatio = 1.0,
     image = false,
     image_ratio: imageRatio = 1.0,
-    image_output: imageOutputTokens = 0,
+    image_output: legacyImageInputTokens = 0,
+    image_input: imageInputTokensAlt,
+    image_input_tokens: explicitImageInputTokens,
+    image_output_tokens: imageOutputTokens = 0,
+    image_output_ratio: imageOutputRatio,
     web_search: webSearch = false,
     web_search_call_count: webSearchCallCount = 0,
     web_search_price: webSearchPrice = 0,
@@ -1670,6 +1713,13 @@ export function renderModelPrice(opts) {
   );
   let groupRatio = effectiveGroupRatio;
   const completionRatio = _completionRatio ?? 0;
+  const imageInputTokens =
+    explicitImageInputTokens ?? imageInputTokensAlt ?? legacyImageInputTokens;
+  const hasImageInput = image && imageInputTokens > 0;
+  const hasSeparateImageOutput =
+    imageOutputTokens > 0 &&
+    imageOutputRatio !== undefined &&
+    imageOutputRatio !== null;
 
   const { symbol, rate } = getCurrencyConfig();
 
@@ -1700,30 +1750,39 @@ export function renderModelPrice(opts) {
     const completionRatioPrice = modelRatio * 2.0 * completionRatio;
     const cacheRatioPrice = modelRatio * 2.0 * cacheRatio;
     const imageRatioPrice = modelRatio * 2.0 * imageRatio;
+    const imageOutputRatioPrice = hasSeparateImageOutput
+      ? modelRatio * 2.0 * imageOutputRatio
+      : 0;
     let effectiveInputTokens =
       inputTokens - cacheTokens + cacheTokens * cacheRatio;
-    if (image && imageOutputTokens > 0) {
+    if (hasImageInput) {
       effectiveInputTokens =
-        inputTokens - imageOutputTokens + imageOutputTokens * imageRatio;
+        effectiveInputTokens - imageInputTokens + imageInputTokens * imageRatio;
     }
     if (audioInputTokens > 0) {
       effectiveInputTokens -= audioInputTokens;
     }
+    const textOutputTokens = hasSeparateImageOutput
+      ? Math.max(completionTokens - imageOutputTokens, 0)
+      : completionTokens;
     const price =
       (effectiveInputTokens / 1000000) * inputRatioPrice * groupRatio +
       (audioInputTokens / 1000000) * audioInputPrice * groupRatio +
-      (completionTokens / 1000000) * completionRatioPrice * groupRatio +
+      (textOutputTokens / 1000000) * completionRatioPrice * groupRatio +
+      (hasSeparateImageOutput
+        ? (imageOutputTokens / 1000000) * imageOutputRatioPrice * groupRatio
+        : 0) +
       (webSearchCallCount / 1000) * webSearchPrice * groupRatio +
       (fileSearchCallCount / 1000) * fileSearchPrice * groupRatio +
       imageGenerationCallPrice * groupRatio;
 
     let inputDesc = '';
-    if (image && imageOutputTokens > 0) {
+    if (hasImageInput) {
       inputDesc = buildBillingPriceText(
         '(输入 {{nonImageInput}} tokens + 图片输入 {{imageInput}} tokens / 1M tokens * {{symbol}}{{price}}',
         {
-          nonImageInput: inputTokens - imageOutputTokens,
-          imageInput: imageOutputTokens,
+          nonImageInput: inputTokens - imageInputTokens,
+          imageInput: imageInputTokens,
           symbol,
           usdAmount: inputRatioPrice,
           rate,
@@ -1763,16 +1822,32 @@ export function renderModelPrice(opts) {
       );
     }
 
-    const outputDesc = buildBillingText(
-      '输出 {{completion}} tokens / 1M tokens * {{symbol}}{{compPrice}}) * {{ratioType}} {{ratio}}',
-      {
-        completion: completionTokens,
-        symbol,
-        compPrice: formatBillingDisplayPrice(completionRatioPrice, rate),
-        ratio: groupRatio,
-        ratioType: ratioLabel,
-      },
-    );
+    const outputDesc = hasSeparateImageOutput
+      ? buildBillingText(
+          '输出 {{completion}} tokens / 1M tokens * {{symbol}}{{compPrice}} + 图片输出 {{imageOutput}} tokens / 1M tokens * {{symbol}}{{imageOutputPrice}}) * {{ratioType}} {{ratio}}',
+          {
+            completion: textOutputTokens,
+            imageOutput: imageOutputTokens,
+            symbol,
+            compPrice: formatBillingDisplayPrice(completionRatioPrice, rate),
+            imageOutputPrice: formatBillingDisplayPrice(
+              imageOutputRatioPrice,
+              rate,
+            ),
+            ratio: groupRatio,
+            ratioType: ratioLabel,
+          },
+        )
+      : buildBillingText(
+          '输出 {{completion}} tokens / 1M tokens * {{symbol}}{{compPrice}}) * {{ratioType}} {{ratio}}',
+          {
+            completion: completionTokens,
+            symbol,
+            compPrice: formatBillingDisplayPrice(completionRatioPrice, rate),
+            ratio: groupRatio,
+            ratioType: ratioLabel,
+          },
+        );
 
     const extraServices = [
       webSearch && webSearchCallCount > 0
@@ -1844,12 +1919,23 @@ export function renderModelPrice(opts) {
             },
           )
         : null,
-      image && imageOutputTokens > 0
+      hasImageInput
         ? buildBillingPriceText(
             '图片输入价格：{{symbol}}{{total}} / 1M tokens',
             {
               symbol,
               usdAmount: imageRatioPrice,
+              rate,
+              amountKey: 'total',
+            },
+          )
+        : null,
+      hasSeparateImageOutput
+        ? buildBillingPriceText(
+            '图片输出价格：{{symbol}}{{total}} / 1M tokens',
+            {
+              symbol,
+              usdAmount: imageOutputRatioPrice,
               rate,
               amountKey: 'total',
             },
@@ -1910,20 +1996,28 @@ export function renderModelPrice(opts) {
   const completionRatioValue = formatRatioValue(completionRatio);
   const cacheRatioValue = formatRatioValue(cacheRatio);
   const imageRatioValue = formatRatioValue(imageRatio);
+  const imageOutputRatioValue = hasSeparateImageOutput
+    ? formatRatioValue(imageOutputRatio)
+    : null;
   const inputRatioPrice = modelRatio * 2.0;
   const completionRatioPrice = modelRatio * 2.0 * completionRatioValue;
+  const imageOutputRatioPrice =
+    imageOutputRatioValue !== null
+      ? inputRatioPrice * imageOutputRatioValue
+      : 0;
   const audioRatioValue =
     audioInputSeperatePrice && audioInputPrice > 0
       ? formatRatioValue(audioInputPrice / inputRatioPrice)
       : null;
 
   const textInputTokens = Math.max(
-    inputTokens - cacheTokens - audioInputTokens,
+    inputTokens - cacheTokens - audioInputTokens - imageInputTokens,
     0,
   );
-  const imageInputTokens =
-    image && imageOutputTokens > 0 ? imageOutputTokens : 0;
   const cacheInputTokens = cacheTokens;
+  const textOutputTokens = hasSeparateImageOutput
+    ? Math.max(completionTokens - imageOutputTokens, 0)
+    : completionTokens;
 
   const textInputAmount =
     (textInputTokens / 1000000) * inputRatioPrice * groupRatio;
@@ -1940,7 +2034,10 @@ export function renderModelPrice(opts) {
   const audioInputAmount =
     (audioInputTokens / 1000000) * audioInputPrice * groupRatio;
   const completionAmount =
-    (completionTokens / 1000000) * completionRatioPrice * groupRatio;
+    (textOutputTokens / 1000000) * completionRatioPrice * groupRatio;
+  const imageOutputAmount = hasSeparateImageOutput
+    ? (imageOutputTokens / 1000000) * imageOutputRatioPrice * groupRatio
+    : 0;
   const webSearchAmount =
     (webSearchCallCount / 1000) * webSearchPrice * groupRatio;
   const fileSearchAmount =
@@ -1953,6 +2050,7 @@ export function renderModelPrice(opts) {
     imageInputAmount +
     audioInputAmount +
     completionAmount +
+    imageOutputAmount +
     webSearchAmount +
     fileSearchAmount +
     imageGenerationAmount;
@@ -1973,6 +2071,11 @@ export function renderModelPrice(opts) {
       imageInputTokens > 0
         ? buildBillingText('图片倍率 {{imageRatio}}', {
             imageRatio: imageRatioValue,
+          })
+        : null,
+      imageOutputRatioValue !== null
+        ? buildBillingText('图片输出倍率 {{imageOutputRatio}}', {
+            imageOutputRatio: imageOutputRatioValue,
           })
         : null,
       audioRatioValue !== null
@@ -2038,17 +2141,32 @@ export function renderModelPrice(opts) {
           },
         )
       : null,
-    buildBillingText(
-      '输出：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * 补全倍率 {{completionRatio}} * {{ratioType}} {{ratio}} = {{amount}}',
-      {
-        tokens: completionTokens,
-        modelRatio: modelRatioValue,
-        completionRatio: completionRatioValue,
-        ratioType: ratioLabel,
-        ratio: groupRatio,
-        amount: renderDisplayAmountFromUsd(completionAmount),
-      },
-    ),
+    textOutputTokens > 0 || !hasSeparateImageOutput
+      ? buildBillingText(
+          '输出：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * 补全倍率 {{completionRatio}} * {{ratioType}} {{ratio}} = {{amount}}',
+          {
+            tokens: textOutputTokens,
+            modelRatio: modelRatioValue,
+            completionRatio: completionRatioValue,
+            ratioType: ratioLabel,
+            ratio: groupRatio,
+            amount: renderDisplayAmountFromUsd(completionAmount),
+          },
+        )
+      : null,
+    hasSeparateImageOutput
+      ? buildBillingText(
+          '图片输出：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * 图片输出倍率 {{imageOutputRatio}} * {{ratioType}} {{ratio}} = {{amount}}',
+          {
+            tokens: imageOutputTokens,
+            modelRatio: modelRatioValue,
+            imageOutputRatio: imageOutputRatioValue,
+            ratioType: ratioLabel,
+            ratio: groupRatio,
+            amount: renderDisplayAmountFromUsd(imageOutputAmount),
+          },
+        )
+      : null,
     webSearch && webSearchCallCount > 0
       ? buildBillingText(
           'Web 搜索：{{count}} / 1K * 单价 {{price}} * {{ratioType}} {{ratio}} = {{amount}}',
@@ -2100,6 +2218,11 @@ export function renderLogContent(opts) {
     cache_ratio: cacheRatio = 1.0,
     image = false,
     image_ratio: imageRatio = 1.0,
+    image_output: legacyImageInputTokens = 0,
+    image_input: imageInputTokensAlt,
+    image_input_tokens: explicitImageInputTokens,
+    image_output_tokens: imageOutputTokens = 0,
+    image_output_ratio: imageOutputRatio,
     web_search: webSearch = false,
     web_search_call_count: webSearchCallCount = 0,
     file_search: fileSearch = false,
@@ -2114,6 +2237,13 @@ export function renderLogContent(opts) {
 
   // 获取货币配置
   const { symbol, rate } = getCurrencyConfig();
+  const imageInputTokens =
+    explicitImageInputTokens ?? imageInputTokensAlt ?? legacyImageInputTokens;
+  const shouldShowImageInput = image && imageInputTokens > 0;
+  const shouldShowImageOutput =
+    imageOutputTokens > 0 &&
+    imageOutputRatio !== undefined &&
+    imageOutputRatio !== null;
 
   if (isPriceDisplayMode(displayMode, modelPrice)) {
     if (modelPrice !== -1) {
@@ -2147,11 +2277,20 @@ export function renderLogContent(opts) {
     );
     appendPricePart(
       parts,
-      image,
+      shouldShowImageInput,
       '图片输入价格 {{symbol}}{{price}} / 1M tokens',
       {
         symbol,
         price: (modelRatio * 2.0 * imageRatio * rate).toFixed(6),
+      },
+    );
+    appendPricePart(
+      parts,
+      shouldShowImageOutput,
+      '图片输出价格 {{symbol}}{{price}} / 1M tokens',
+      {
+        symbol,
+        price: (modelRatio * 2.0 * imageOutputRatio * rate).toFixed(6),
       },
     );
     appendPricePart(
@@ -2182,18 +2321,27 @@ export function renderLogContent(opts) {
       ratio,
     });
   } else {
-    if (image) {
-      return i18next.t(
-        '模型倍率 {{modelRatio}}，缓存倍率 {{cacheRatio}}，输出倍率 {{completionRatio}}，图片输入倍率 {{imageRatio}}，{{ratioType}} {{ratio}}',
-        {
-          modelRatio: modelRatio,
-          cacheRatio: cacheRatio,
-          completionRatio: completionRatio,
-          imageRatio: imageRatio,
-          ratioType: ratioLabel,
-          ratio,
-        },
-      );
+    if (shouldShowImageInput || shouldShowImageOutput) {
+      const imageParts = [];
+      if (shouldShowImageInput) {
+        imageParts.push(
+          i18next.t('图片输入倍率 {{imageRatio}}', { imageRatio }),
+        );
+      }
+      if (shouldShowImageOutput) {
+        imageParts.push(
+          i18next.t('图片输出倍率 {{imageOutputRatio}}', {
+            imageOutputRatio,
+          }),
+        );
+      }
+      return [
+        i18next.t('模型倍率 {{modelRatio}}', { modelRatio }),
+        i18next.t('缓存倍率 {{cacheRatio}}', { cacheRatio }),
+        i18next.t('输出倍率 {{completionRatio}}', { completionRatio }),
+        ...imageParts,
+        i18next.t('{{ratioType}} {{ratio}}', { ratioType: ratioLabel, ratio }),
+      ].join('，');
     } else if (webSearch) {
       return i18next.t(
         '模型倍率 {{modelRatio}}，缓存倍率 {{cacheRatio}}，输出倍率 {{completionRatio}}，{{ratioType}} {{ratio}}，Web 搜索调用 {{webSearchCallCount}} 次',
@@ -2247,7 +2395,10 @@ export function parseTiersFromExpr(exprStr) {
   try {
     const { body } = stripExprVersion(exprStr);
     const condGroup = `((?:(?:p|c|len)\\s*(?:<|<=|>|>=)\\s*[\\d.eE+]+)(?:\\s*&&\\s*(?:p|c|len)\\s*(?:<|<=|>|>=)\\s*[\\d.eE+]+)*)`;
-    const tierRe = new RegExp(`(?:${condGroup}\\s*\\?\\s*)?tier\\("([^"]*)",\\s*([^)]+)\\)`, 'g');
+    const tierRe = new RegExp(
+      `(?:${condGroup}\\s*\\?\\s*)?tier\\("([^"]*)",\\s*([^)]+)\\)`,
+      'g',
+    );
     const tiers = [];
     let m;
     while ((m = tierRe.exec(body)) !== null) {
@@ -2256,7 +2407,8 @@ export function parseTiersFromExpr(exprStr) {
       if (condStr) {
         for (const cp of condStr.split(/\s*&&\s*/)) {
           const cm = cp.trim().match(/^(p|c|len)\s*(<|<=|>|>=)\s*([\d.eE+]+)$/);
-          if (cm) conditions.push({ var: cm[1], op: cm[2], value: Number(cm[3]) });
+          if (cm)
+            conditions.push({ var: cm[1], op: cm[2], value: Number(cm[3]) });
         }
       }
       const tier = parseTierBody(m[3]);
@@ -2283,7 +2435,11 @@ export function renderTieredModelPrice(opts) {
     cache_creation_tokens_1h: cacheCreationTokens1h = 0,
   } = opts;
   let exprStr = '';
-  try { exprStr = atob(exprB64); } catch { /* ignore */ }
+  try {
+    exprStr = atob(exprB64);
+  } catch {
+    /* ignore */
+  }
   const tiers = parseTiersFromExpr(exprStr);
   if (tiers.length === 0) {
     return i18next.t('阶梯计费（表达式解析失败）');
@@ -2293,19 +2449,26 @@ export function renderTieredModelPrice(opts) {
   const { symbol, rate } = getCurrencyConfig();
   const gr = groupRatio || 1;
 
-  const hasAnyCacheTokens = cacheTokens > 0 || cacheCreationTokens > 0
-    || cacheCreationTokens5m > 0 || cacheCreationTokens1h > 0;
+  const hasAnyCacheTokens =
+    cacheTokens > 0 ||
+    cacheCreationTokens > 0 ||
+    cacheCreationTokens5m > 0 ||
+    cacheCreationTokens1h > 0;
 
-  const priceLines = BILLING_PRICING_VARS
-    .filter((v) => v.group !== 'cache' || hasAnyCacheTokens)
-    .map((v) => [v.field, v.label]);
+  const priceLines = BILLING_PRICING_VARS.filter(
+    (v) => v.group !== 'cache' || hasAnyCacheTokens,
+  ).map((v) => [v.field, v.label]);
 
   const lines = [
     buildBillingText('命中档位：{{tier}}', { tier: matchedTier || tier.label }),
     ...priceLines
       .filter(([field]) => tier[field] > 0)
       .map(([field, label]) =>
-        buildBillingPriceText(`${label}：{{symbol}}{{price}} / 1M tokens`, { symbol, usdAmount: tier[field], rate }),
+        buildBillingPriceText(`${label}：{{symbol}}{{price}} / 1M tokens`, {
+          symbol,
+          usdAmount: tier[field],
+          rate,
+        }),
       ),
   ];
 
@@ -2326,7 +2489,11 @@ export function renderTieredModelPriceSimple(opts) {
     outputMode = 'segments',
   } = opts;
   let exprStr = '';
-  try { exprStr = atob(exprB64); } catch { /* ignore */ }
+  try {
+    exprStr = atob(exprB64);
+  } catch {
+    /* ignore */
+  }
   const tiers = parseTiersFromExpr(exprStr);
   const tier = tiers.find((t) => t.label === matchedTier) || tiers[0];
 
@@ -2339,11 +2506,14 @@ export function renderTieredModelPriceSimple(opts) {
     ];
 
     if (tier && isPriceDisplayMode(displayMode)) {
-      const hasAnyCacheTokens = cacheTokens > 0 || cacheCreationTokens > 0
-        || cacheCreationTokens5m > 0 || cacheCreationTokens1h > 0;
-      const priceSegments = BILLING_PRICING_VARS
-        .filter((v) => v.group !== 'cache' || hasAnyCacheTokens)
-        .map((v) => [v.field, v.shortLabel]);
+      const hasAnyCacheTokens =
+        cacheTokens > 0 ||
+        cacheCreationTokens > 0 ||
+        cacheCreationTokens5m > 0 ||
+        cacheCreationTokens1h > 0;
+      const priceSegments = BILLING_PRICING_VARS.filter(
+        (v) => v.group !== 'cache' || hasAnyCacheTokens,
+      ).map((v) => [v.field, v.shortLabel]);
       for (const [field, label] of priceSegments) {
         if (tier[field] > 0) {
           segments.push({
@@ -2379,11 +2549,18 @@ export function renderModelPriceSimple(opts) {
     cache_creation_ratio_1h: cacheCreationRatio1h = 1.0,
     image = false,
     image_ratio: imageRatio = 1.0,
+    image_output: legacyImageInputTokens = 0,
+    image_input: imageInputTokensAlt,
+    image_input_tokens: explicitImageInputTokens,
+    image_output_tokens: imageOutputTokens = 0,
+    image_output_ratio: imageOutputRatio,
     is_system_prompt_overwritten: isSystemPromptOverride = false,
     provider = 'openai',
     displayMode = 'price',
     outputMode = 'text',
   } = opts;
+  const imageInputTokens =
+    explicitImageInputTokens ?? imageInputTokensAlt ?? legacyImageInputTokens;
   return renderPriceSimpleCore({
     modelRatio,
     modelPrice,
@@ -2399,6 +2576,9 @@ export function renderModelPriceSimple(opts) {
     cacheCreationRatio1h,
     image,
     imageRatio,
+    imageInputTokens,
+    imageOutputTokens,
+    imageOutputRatio,
     isSystemPromptOverride,
     displayMode,
     outputMode,

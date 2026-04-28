@@ -669,6 +669,8 @@ var defaultImageRatio = map[string]float64{
 	"gemini-3-pro-image-preview":     1,
 }
 var defaultImageOutputRatio = map[string]float64{
+	"gpt-image-2":                    6,
+	"gpt-image-2-2026-04-21":         6,
 	"gemini-3.1-flash-image-preview": 120,
 	"gemini-3-pro-image-preview":     60,
 }
