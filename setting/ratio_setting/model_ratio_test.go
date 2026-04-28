@@ -61,3 +61,14 @@ func TestGetCompletionRatioGPT55DatedVariant(t *testing.T) {
 		t.Fatalf("gpt-5.5 dated variant completion ratio = %v, want 6", got)
 	}
 }
+
+func TestDefaultImageOutputRatioGPTImage2(t *testing.T) {
+	got, ok := defaultImageOutputRatio["gpt-image-2"]
+
+	if !ok {
+		t.Fatal("gpt-image-2 should have a default image output ratio")
+	}
+	if got != 6 {
+		t.Fatalf("gpt-image-2 image output ratio = %v, want 6", got)
+	}
+}
