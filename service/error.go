@@ -101,6 +101,11 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 
 	err = common.Unmarshal(responseBody, &errResponse)
 	if err != nil {
+		if strings.HasPrefix(strings.TrimSpace(string(responseBody)), "<") {
+			logger.LogError(ctx, fmt.Sprintf("bad response status code %d, non-json body: %s", resp.StatusCode, string(responseBody)))
+			newApiErr.Err = fmt.Errorf("upstream returned non-JSON error response")
+			return
+		}
 		if showBodyWhenFail {
 			newApiErr.Err = buildErrWithBody("")
 		} else {
