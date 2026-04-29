@@ -166,3 +166,58 @@ func TestConvertImageRequestKeepsOfficialGPTImage2EditsAsMultipart(t *testing.T)
 		t.Fatalf("unexpected upstream URL: %s", requestURL)
 	}
 }
+
+func TestConvertImageRequestUsesConfiguredGenerationCompatibilityForFutureProviders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("model", "gpt-image-2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteField("prompt", "make it brighter"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteField("image", "https://example.com/input.png"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+
+	n := uint(1)
+	info := &relaycommon.RelayInfo{
+		RelayMode:      relayconstant.RelayModeImagesEdits,
+		RequestURLPath: "/v1/images/edits",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelBaseUrl: "https://images.example.com",
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				ImageEditUseGenerationEndpoint: true,
+			},
+		},
+	}
+
+	convertedAny, err := (&Adaptor{}).ConvertImageRequest(c, info, dto.ImageRequest{
+		Model:  "gpt-image-2",
+		Prompt: "make it brighter",
+		N:      &n,
+	})
+	if err != nil {
+		t.Fatalf("ConvertImageRequest returned error: %v", err)
+	}
+	converted, ok := convertedAny.(*dto.ImageRequest)
+	if !ok {
+		t.Fatalf("expected *dto.ImageRequest, got %T", convertedAny)
+	}
+	if info.RelayMode != relayconstant.RelayModeImagesGenerations {
+		t.Fatalf("expected relay mode to switch to generations, got %d", info.RelayMode)
+	}
+	if !strings.Contains(string(converted.ImageUrls), "https://example.com/input.png") {
+		t.Fatalf("expected configured provider image URL to be forwarded, got %s", string(converted.ImageUrls))
+	}
+}
