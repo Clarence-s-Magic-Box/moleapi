@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -559,7 +560,21 @@ func shouldUseAPIMartImageEditCompatibility(info *relaycommon.RelayInfo, request
 	if info == nil || info.RelayMode != relayconstant.RelayModeImagesEdits {
 		return false
 	}
-	return service.IsGPTImage2Model(request.Model) && strings.Contains(strings.ToLower(info.ChannelBaseUrl), "apimart")
+	return service.IsGPTImage2Model(request.Model) && isAPIMartBaseURL(info.ChannelBaseUrl)
+}
+
+func isAPIMartBaseURL(baseURL string) bool {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		return false
+	}
+	parsed, err := url.Parse(baseURL)
+	if err == nil {
+		host := strings.ToLower(parsed.Hostname())
+		return host == "apimart.ai" || strings.HasSuffix(host, ".apimart.ai")
+	}
+	lower := strings.ToLower(baseURL)
+	return lower == "apimart.ai" || strings.HasSuffix(lower, ".apimart.ai")
 }
 
 func convertAPIMartImageEditRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (*dto.ImageRequest, error) {
