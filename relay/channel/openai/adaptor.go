@@ -428,8 +428,8 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
 	switch info.RelayMode {
 	case relayconstant.RelayModeImagesEdits:
-		if shouldUseAPIMartImageEditCompatibility(info, request) {
-			return convertAPIMartImageEditRequest(c, info, request)
+		if shouldUseImageEditGenerationCompatibility(info, request) {
+			return convertImageEditToGenerationRequest(c, info, request)
 		}
 
 		var requestBody bytes.Buffer
@@ -556,14 +556,17 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	}
 }
 
-func shouldUseAPIMartImageEditCompatibility(info *relaycommon.RelayInfo, request dto.ImageRequest) bool {
+func shouldUseImageEditGenerationCompatibility(info *relaycommon.RelayInfo, request dto.ImageRequest) bool {
 	if info == nil || info.RelayMode != relayconstant.RelayModeImagesEdits {
 		return false
 	}
-	return service.IsGPTImage2Model(request.Model) && isAPIMartBaseURL(info.ChannelBaseUrl)
+	if !service.IsGPTImage2Model(request.Model) {
+		return false
+	}
+	return info.ChannelOtherSettings.ImageEditUseGenerationEndpoint || isKnownAsyncImageEditBaseURL(info.ChannelBaseUrl)
 }
 
-func isAPIMartBaseURL(baseURL string) bool {
+func isKnownAsyncImageEditBaseURL(baseURL string) bool {
 	baseURL = strings.TrimSpace(baseURL)
 	if baseURL == "" {
 		return false
@@ -577,13 +580,13 @@ func isAPIMartBaseURL(baseURL string) bool {
 	return lower == "apimart.ai" || strings.HasSuffix(lower, ".apimart.ai")
 }
 
-func convertAPIMartImageEditRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (*dto.ImageRequest, error) {
+func convertImageEditToGenerationRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (*dto.ImageRequest, error) {
 	converted := request
 	converted.Image = nil
 	converted.ImageUrls = nil
-	converted.Size = normalizeAPIMartImageSize(converted.Size)
+	converted.Size = normalizeImageEditGenerationSize(converted.Size)
 
-	imageURLs, err := apimartImageEditInputs(c, request)
+	imageURLs, err := imageEditGenerationInputs(c, request)
 	if err != nil {
 		return nil, err
 	}
@@ -603,7 +606,7 @@ func convertAPIMartImageEditRequest(c *gin.Context, info *relaycommon.RelayInfo,
 	return &converted, nil
 }
 
-func apimartImageEditInputs(c *gin.Context, request dto.ImageRequest) ([]string, error) {
+func imageEditGenerationInputs(c *gin.Context, request dto.ImageRequest) ([]string, error) {
 	mf := c.Request.MultipartForm
 	if mf == nil {
 		if _, err := c.MultipartForm(); err != nil {
@@ -613,69 +616,69 @@ func apimartImageEditInputs(c *gin.Context, request dto.ImageRequest) ([]string,
 	}
 
 	imageURLs := make([]string, 0)
-	imageURLs = append(imageURLs, apimartImageURLsFromRaw(request.ImageUrls)...)
-	imageURLs = append(imageURLs, apimartImageURLsFromRaw(request.Image)...)
+	imageURLs = append(imageURLs, imageEditGenerationURLsFromRaw(request.ImageUrls)...)
+	imageURLs = append(imageURLs, imageEditGenerationURLsFromRaw(request.Image)...)
 
 	if mf != nil {
-		imageURLs = append(imageURLs, apimartImageURLsFromFormValues(mf.Value)...)
-		fileURLs, err := apimartImageDataURLsFromFormFiles(mf.File)
+		imageURLs = append(imageURLs, imageEditGenerationURLsFromFormValues(mf.Value)...)
+		fileURLs, err := imageEditGenerationDataURLsFromFormFiles(mf.File)
 		if err != nil {
 			return nil, err
 		}
 		imageURLs = append(imageURLs, fileURLs...)
 	}
 
-	return dedupeAPIMartImageURLs(imageURLs), nil
+	return dedupeImageEditGenerationURLs(imageURLs), nil
 }
 
-func apimartImageURLsFromFormValues(values map[string][]string) []string {
+func imageEditGenerationURLsFromFormValues(values map[string][]string) []string {
 	if len(values) == 0 {
 		return nil
 	}
 	var imageURLs []string
 	for _, key := range []string{"image_urls", "image"} {
 		for _, value := range values[key] {
-			imageURLs = append(imageURLs, apimartImageURLsFromString(value)...)
+			imageURLs = append(imageURLs, imageEditGenerationURLsFromString(value)...)
 		}
 	}
 	return imageURLs
 }
 
-func apimartImageURLsFromRaw(raw json.RawMessage) []string {
+func imageEditGenerationURLsFromRaw(raw json.RawMessage) []string {
 	if len(raw) == 0 {
 		return nil
 	}
-	return apimartImageURLsFromString(string(raw))
+	return imageEditGenerationURLsFromString(string(raw))
 }
 
-func apimartImageURLsFromString(value string) []string {
+func imageEditGenerationURLsFromString(value string) []string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return nil
 	}
 	var parsed any
 	if err := common.Unmarshal([]byte(value), &parsed); err == nil {
-		return apimartImageURLsFromAny(parsed)
+		return imageEditGenerationURLsFromAny(parsed)
 	}
-	return apimartImageURLsFromAny(value)
+	return imageEditGenerationURLsFromAny(value)
 }
 
-func apimartImageURLsFromAny(value any) []string {
+func imageEditGenerationURLsFromAny(value any) []string {
 	switch v := value.(type) {
 	case string:
-		if isAPIMartSupportedImageURL(v) {
+		if isImageEditGenerationSupportedURL(v) {
 			return []string{strings.TrimSpace(v)}
 		}
 	case []any:
 		var imageURLs []string
 		for _, item := range v {
-			imageURLs = append(imageURLs, apimartImageURLsFromAny(item)...)
+			imageURLs = append(imageURLs, imageEditGenerationURLsFromAny(item)...)
 		}
 		return imageURLs
 	case map[string]any:
 		for _, key := range []string{"url", "image_url", "image"} {
 			if nested, ok := v[key]; ok {
-				imageURLs := apimartImageURLsFromAny(nested)
+				imageURLs := imageEditGenerationURLsFromAny(nested)
 				if len(imageURLs) > 0 {
 					return imageURLs
 				}
@@ -685,7 +688,7 @@ func apimartImageURLsFromAny(value any) []string {
 	return nil
 }
 
-func apimartImageDataURLsFromFormFiles(files map[string][]*multipart.FileHeader) ([]string, error) {
+func imageEditGenerationDataURLsFromFormFiles(files map[string][]*multipart.FileHeader) ([]string, error) {
 	if len(files) == 0 {
 		return nil, nil
 	}
@@ -699,7 +702,7 @@ func apimartImageDataURLsFromFormFiles(files map[string][]*multipart.FileHeader)
 	}
 	imageURLs := make([]string, 0, len(imageFiles))
 	for i, fileHeader := range imageFiles {
-		dataURL, err := apimartImageDataURLFromFile(fileHeader)
+		dataURL, err := imageEditGenerationDataURLFromFile(fileHeader)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read image file %d: %w", i, err)
 		}
@@ -708,7 +711,7 @@ func apimartImageDataURLsFromFormFiles(files map[string][]*multipart.FileHeader)
 	return imageURLs, nil
 }
 
-func apimartImageDataURLFromFile(fileHeader *multipart.FileHeader) (string, error) {
+func imageEditGenerationDataURLFromFile(fileHeader *multipart.FileHeader) (string, error) {
 	if fileHeader == nil {
 		return "", errors.New("image file is nil")
 	}
@@ -728,7 +731,7 @@ func apimartImageDataURLFromFile(fileHeader *multipart.FileHeader) (string, erro
 	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(content)), nil
 }
 
-func isAPIMartSupportedImageURL(value string) bool {
+func isImageEditGenerationSupportedURL(value string) bool {
 	value = strings.TrimSpace(value)
 	lower := strings.ToLower(value)
 	return strings.HasPrefix(lower, "http://") ||
@@ -736,7 +739,7 @@ func isAPIMartSupportedImageURL(value string) bool {
 		strings.HasPrefix(lower, "data:image/")
 }
 
-func dedupeAPIMartImageURLs(values []string) []string {
+func dedupeImageEditGenerationURLs(values []string) []string {
 	if len(values) == 0 {
 		return nil
 	}
@@ -756,7 +759,7 @@ func dedupeAPIMartImageURLs(values []string) []string {
 	return out
 }
 
-func normalizeAPIMartImageSize(size string) string {
+func normalizeImageEditGenerationSize(size string) string {
 	normalized := strings.ToLower(strings.TrimSpace(size))
 	normalized = strings.ReplaceAll(normalized, "×", "x")
 	normalized = strings.ReplaceAll(normalized, " ", "")
