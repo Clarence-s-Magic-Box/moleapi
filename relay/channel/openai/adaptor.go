@@ -2,6 +2,7 @@ package openai
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -426,6 +427,9 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
 	switch info.RelayMode {
 	case relayconstant.RelayModeImagesEdits:
+		if shouldUseAPIMartImageEditCompatibility(info, request) {
+			return convertAPIMartImageEditRequest(c, info, request)
+		}
 
 		var requestBody bytes.Buffer
 		writer := multipart.NewWriter(&requestBody)
@@ -548,6 +552,214 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 
 	default:
 		return request, nil
+	}
+}
+
+func shouldUseAPIMartImageEditCompatibility(info *relaycommon.RelayInfo, request dto.ImageRequest) bool {
+	if info == nil || info.RelayMode != relayconstant.RelayModeImagesEdits {
+		return false
+	}
+	return service.IsGPTImage2Model(request.Model) && strings.Contains(strings.ToLower(info.ChannelBaseUrl), "apimart")
+}
+
+func convertAPIMartImageEditRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (*dto.ImageRequest, error) {
+	converted := request
+	converted.Image = nil
+	converted.ImageUrls = nil
+	converted.Size = normalizeAPIMartImageSize(converted.Size)
+
+	imageURLs, err := apimartImageEditInputs(c, request)
+	if err != nil {
+		return nil, err
+	}
+	if len(imageURLs) == 0 {
+		return nil, errors.New("image is required")
+	}
+	rawImageURLs, err := common.Marshal(imageURLs)
+	if err != nil {
+		return nil, err
+	}
+	converted.ImageUrls = rawImageURLs
+
+	info.RelayMode = relayconstant.RelayModeImagesGenerations
+	info.RequestURLPath = "/v1/images/generations"
+	info.Request = &converted
+	c.Request.Header.Set("Content-Type", "application/json")
+	return &converted, nil
+}
+
+func apimartImageEditInputs(c *gin.Context, request dto.ImageRequest) ([]string, error) {
+	mf := c.Request.MultipartForm
+	if mf == nil {
+		if _, err := c.MultipartForm(); err != nil {
+			return nil, errors.New("failed to parse multipart form")
+		}
+		mf = c.Request.MultipartForm
+	}
+
+	imageURLs := make([]string, 0)
+	imageURLs = append(imageURLs, apimartImageURLsFromRaw(request.ImageUrls)...)
+	imageURLs = append(imageURLs, apimartImageURLsFromRaw(request.Image)...)
+
+	if mf != nil {
+		imageURLs = append(imageURLs, apimartImageURLsFromFormValues(mf.Value)...)
+		fileURLs, err := apimartImageDataURLsFromFormFiles(mf.File)
+		if err != nil {
+			return nil, err
+		}
+		imageURLs = append(imageURLs, fileURLs...)
+	}
+
+	return dedupeAPIMartImageURLs(imageURLs), nil
+}
+
+func apimartImageURLsFromFormValues(values map[string][]string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	var imageURLs []string
+	for _, key := range []string{"image_urls", "image"} {
+		for _, value := range values[key] {
+			imageURLs = append(imageURLs, apimartImageURLsFromString(value)...)
+		}
+	}
+	return imageURLs
+}
+
+func apimartImageURLsFromRaw(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	return apimartImageURLsFromString(string(raw))
+}
+
+func apimartImageURLsFromString(value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	var parsed any
+	if err := common.Unmarshal([]byte(value), &parsed); err == nil {
+		return apimartImageURLsFromAny(parsed)
+	}
+	return apimartImageURLsFromAny(value)
+}
+
+func apimartImageURLsFromAny(value any) []string {
+	switch v := value.(type) {
+	case string:
+		if isAPIMartSupportedImageURL(v) {
+			return []string{strings.TrimSpace(v)}
+		}
+	case []any:
+		var imageURLs []string
+		for _, item := range v {
+			imageURLs = append(imageURLs, apimartImageURLsFromAny(item)...)
+		}
+		return imageURLs
+	case map[string]any:
+		for _, key := range []string{"url", "image_url", "image"} {
+			if nested, ok := v[key]; ok {
+				imageURLs := apimartImageURLsFromAny(nested)
+				if len(imageURLs) > 0 {
+					return imageURLs
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func apimartImageDataURLsFromFormFiles(files map[string][]*multipart.FileHeader) ([]string, error) {
+	if len(files) == 0 {
+		return nil, nil
+	}
+	var imageFiles []*multipart.FileHeader
+	imageFiles = append(imageFiles, files["image"]...)
+	imageFiles = append(imageFiles, files["image[]"]...)
+	for fieldName, fileHeaders := range files {
+		if strings.HasPrefix(fieldName, "image[") && fieldName != "image[]" {
+			imageFiles = append(imageFiles, fileHeaders...)
+		}
+	}
+	imageURLs := make([]string, 0, len(imageFiles))
+	for i, fileHeader := range imageFiles {
+		dataURL, err := apimartImageDataURLFromFile(fileHeader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read image file %d: %w", i, err)
+		}
+		imageURLs = append(imageURLs, dataURL)
+	}
+	return imageURLs, nil
+}
+
+func apimartImageDataURLFromFile(fileHeader *multipart.FileHeader) (string, error) {
+	if fileHeader == nil {
+		return "", errors.New("image file is nil")
+	}
+	file, err := fileHeader.Open()
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return "", err
+	}
+	if len(content) == 0 {
+		return "", errors.New("image file is empty")
+	}
+	mimeType := detectImageMimeType(fileHeader.Filename)
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(content)), nil
+}
+
+func isAPIMartSupportedImageURL(value string) bool {
+	value = strings.TrimSpace(value)
+	lower := strings.ToLower(value)
+	return strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "data:image/")
+}
+
+func dedupeAPIMartImageURLs(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func normalizeAPIMartImageSize(size string) string {
+	normalized := strings.ToLower(strings.TrimSpace(size))
+	normalized = strings.ReplaceAll(normalized, "×", "x")
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	switch normalized {
+	case "", "auto":
+		return size
+	case "1024x1024", "2048x2048":
+		return "1:1"
+	case "1536x1024", "2048x1360":
+		return "3:2"
+	case "1024x1536", "1360x2048":
+		return "2:3"
+	case "1536x864", "2048x1152", "3840x2160", "1792x1024":
+		return "16:9"
+	case "864x1536", "1152x2048", "2160x3840", "1024x1792":
+		return "9:16"
+	default:
+		return size
 	}
 }
 
